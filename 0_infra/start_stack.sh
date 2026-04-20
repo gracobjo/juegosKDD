@@ -26,7 +26,10 @@ export HIVE_HOME="${HIVE_HOME:-/home/hadoop/apache-hive-4.2.0-bin}"
 export SPARK_HOME="${SPARK_HOME:-/opt/spark}"
 CASSANDRA_HOME="${CASSANDRA_HOME:-/home/hadoop/smart_energy/cassandra}"
 AIRFLOW_VENV="${AIRFLOW_VENV:-/home/hadoop/smart_energy/venv}"
-AIRFLOW_HOME="${AIRFLOW_HOME:-/home/hadoop/airflow}"
+# AIRFLOW_HOME DEDICADO a juegosKDD para NO pisar smart_grid (/home/hadoop/airflow)
+# ni proyecto_transporte (~/proyecto_transporte_global/airflow_home).
+AIRFLOW_HOME="${AIRFLOW_HOME:-/home/hadoop/juegosKDD/0_infra/airflow_home}"
+AIRFLOW_API_PORT="${AIRFLOW_API_PORT:-8090}"   # smart_grid:8080 · transporte:8088
 NIFI_HOME="${NIFI_HOME:-/home/hadoop/smart_energy/nifi-2.6.0}"
 
 LOG_DIR="/home/hadoop/juegosKDD/0_infra/logs"
@@ -190,9 +193,51 @@ start_airflow() {
     export AIRFLOW_HOME
     # Que nuestros DAGs se carguen desde el repo, no desde ~/airflow/dags
     export AIRFLOW__CORE__DAGS_FOLDER="/home/hadoop/juegosKDD/6_orchestration/dags"
+    # Evita cargar DAGs de ejemplo (desordenan la UI)
+    export AIRFLOW__CORE__LOAD_EXAMPLES=False
+    # Da margen a la importación del DAG (Python lento en el primer parseo)
+    export AIRFLOW__CORE__DAGBAG_IMPORT_TIMEOUT=60
+    # DB SQLite dedicada a juegosKDD (aislada de smart_grid y transporte)
+    export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="sqlite:///${AIRFLOW_HOME}/airflow.db"
     # Fuerza el puerto también vía env por si algún subproceso no recibe --port
-    export AIRFLOW__API__PORT=8080
+    export AIRFLOW__API__PORT=$AIRFLOW_API_PORT
     export AIRFLOW__API__HOST=0.0.0.0
+
+    mkdir -p "$AIRFLOW_HOME"
+
+    # ── Secretos persistentes (CRÍTICO en Airflow 3.x) ───────────────────────
+    # El Task SDK del worker pasa un JWT al api-server. Si scheduler,
+    # dag-processor y api-server no comparten la MISMA jwt_secret, los tokens
+    # emitidos por uno son rechazados por los otros (Signature verification
+    # failed → tasks en state mismatch/failed). Los generamos una vez y los
+    # persistimos en el propio AIRFLOW_HOME.
+    local secrets_file="$AIRFLOW_HOME/.secrets.env"
+    if [ ! -f "$secrets_file" ]; then
+        local jwt fernet
+        jwt=$("$AIRFLOW_VENV/bin/python" -c \
+              'import secrets; print(secrets.token_urlsafe(48))')
+        fernet=$("$AIRFLOW_VENV/bin/python" -c \
+                 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')
+        cat >"$secrets_file" <<EOF
+# Generado automáticamente por start_stack.sh — NO commit (contiene secretos)
+AIRFLOW__API_AUTH__JWT_SECRET=$jwt
+AIRFLOW__CORE__INTERNAL_API_SECRET_KEY=$jwt
+AIRFLOW__CORE__FERNET_KEY=$fernet
+EOF
+        chmod 600 "$secrets_file"
+        ok "Secretos Airflow generados en $secrets_file"
+    fi
+    # shellcheck disable=SC1090
+    set -a; . "$secrets_file"; set +a
+
+    # Inicialización automática de la DB la primera vez
+    if [ ! -f "$AIRFLOW_HOME/airflow.db" ]; then
+        warn "AIRFLOW_HOME sin DB. Inicializando DB SQLite en $AIRFLOW_HOME..."
+        "$AIRFLOW_VENV/bin/airflow" db migrate \
+            >"$LOG_DIR/airflow-init.log" 2>&1 \
+            && ok "DB Airflow inicializada" \
+            || warn "db migrate devolvió errores. Revisa $LOG_DIR/airflow-init.log"
+    fi
 
     # Informativo: si hay otro Airflow coexistiendo (lo respetamos)
     check_foreign_airflow
@@ -200,26 +245,57 @@ start_airflow() {
     # Limpiar PIDs viejos nuestros
     rm -f "$AIRFLOW_HOME"/*.pid 2>/dev/null
 
-    # Scheduler — solo consideramos como "ya corriendo" el que use NUESTRO venv
-    # (ignoramos los schedulers de otros proyectos como proyecto_transporte)
-    if ! pgrep -af "airflow scheduler" | grep -q "$AIRFLOW_VENV"; then
+    # "Nuestro" = proceso con AIRFLOW_HOME igual + exe dentro de AIRFLOW_VENV.
+    # Esto evita confundirnos con el Airflow de proyecto_transporte (otro venv).
+    is_our_airflow_running() {
+        local pattern=$1
+        local pid env_home exe_path
+        for pid in $(pgrep -f "$pattern" 2>/dev/null); do
+            [ -r "/proc/$pid/environ" ] || continue
+            env_home=$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | \
+                       awk -F= '$1=="AIRFLOW_HOME"{print $2; exit}')
+            exe_path=$(readlink -f "/proc/$pid/exe" 2>/dev/null)
+            if [ "$env_home" = "$AIRFLOW_HOME" ] && \
+               [[ "$exe_path" == "$AIRFLOW_VENV"* ]]; then
+                return 0
+            fi
+        done
+        return 1
+    }
+
+    # Scheduler
+    if ! is_our_airflow_running 'airflow scheduler'; then
         nohup "$AIRFLOW_VENV/bin/airflow" scheduler \
             >"$LOG_DIR/airflow-scheduler.log" 2>&1 &
         echo $! > "$PID_DIR/airflow-scheduler.pid"
         ok "Airflow scheduler lanzado (PID $!) — AIRFLOW_HOME=$AIRFLOW_HOME"
     else
-        ok "Airflow scheduler ya corriendo (nuestro venv)"
+        ok "Airflow scheduler ya corriendo (nuestro)"
     fi
 
-    # API server forzando puerto 8080 (el de transporte usa 8088, no se pisan)
-    if ! port_open 8080; then
-        nohup "$AIRFLOW_VENV/bin/airflow" api-server --host 0.0.0.0 --port 8080 \
+    # DAG-Processor (OBLIGATORIO en Airflow 3.x — el scheduler ya no parsea DAGs)
+    if ! is_our_airflow_running 'airflow dag.?processor'; then
+        nohup "$AIRFLOW_VENV/bin/airflow" dag-processor \
+            >"$LOG_DIR/airflow-dagprocessor.log" 2>&1 &
+        echo $! > "$PID_DIR/airflow-dagprocessor.pid"
+        ok "Airflow dag-processor lanzado (PID $!)"
+    else
+        ok "Airflow dag-processor ya corriendo (nuestro)"
+    fi
+
+    # API server en puerto propio (por defecto :8090)
+    if is_our_airflow_running 'airflow api.?server'; then
+        ok "Airflow API server ya corriendo (nuestro) en :$AIRFLOW_API_PORT"
+    elif port_open "$AIRFLOW_API_PORT"; then
+        warn "El puerto :$AIRFLOW_API_PORT está ocupado pero no por Airflow nuestro."
+        warn "Ejecuta: bash 0_infra/stop_stack.sh airflow  y reintenta."
+    else
+        nohup "$AIRFLOW_VENV/bin/airflow" api-server \
+            --host 0.0.0.0 --port "$AIRFLOW_API_PORT" \
             >"$LOG_DIR/airflow-apiserver.log" 2>&1 &
         echo $! > "$PID_DIR/airflow-apiserver.pid"
-        wait_for_port "Airflow API" 8080 60 || \
+        wait_for_port "Airflow API" "$AIRFLOW_API_PORT" 60 || \
             warn "Revisa $LOG_DIR/airflow-apiserver.log"
-    else
-        ok "Airflow API server ya escuchando en :8080"
     fi
 }
 
@@ -241,7 +317,7 @@ show_status() {
         "Cassandra:9042" \
         "Hive Metastore:9083" \
         "HiveServer2:10000" \
-        "Airflow API:8080" \
+        "Airflow API (juegosKDD):$AIRFLOW_API_PORT" \
         "FastAPI:8000" \
         "Dashboard Vite:5173" \
         ; do

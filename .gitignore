@@ -33,6 +33,8 @@ checkpoint/
 # ── Runtime del pipeline (logs y PIDs locales) ────────────────────────────────
 0_infra/logs/
 0_infra/pids/
+0_infra/airflow_home/
+0_infra/**/.secrets.env
 
 # ── IDE ───────────────────────────────────────────────────────────────────────
 .idea/
