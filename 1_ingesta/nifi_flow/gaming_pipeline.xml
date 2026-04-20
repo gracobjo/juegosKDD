@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  NiFi Template — gaming_pipeline
+  ===============================================================================
+  Este fichero es un PLACEHOLDER. Los templates XML de NiFi son generados por
+  la propia UI de NiFi al exportar un flow con el botón "Download Template".
+
+  Para reproducir el flow equivalente al producer Python desde NiFi, crea en
+  la UI (http://localhost:8080/nifi) los siguientes procesadores encadenados:
+
+  1.  GenerateFlowFile          (Schedule: CRON 0/60 * * * * ?)
+        └─ Genera un tick cada 60s para disparar el resto del flow.
+
+  2.  InvokeHTTP                (método GET)
+        URL: https://api.steampowered.com/ISteamUserStats/
+             GetNumberOfCurrentPlayers/v1/?appid=730&key=${STEAM_API_KEY}
+        └─ Una instancia por AppID o usa UpdateAttribute con una lista.
+
+  3.  InvokeHTTP                (SteamSpy — sin key)
+        URL: https://steamspy.com/api.php?request=appdetails&appid=${appid}
+
+  4.  MergeContent              (fusiona ambas respuestas por appid)
+
+  5.  EvaluateJsonPath          (extrae player_count, positive, negative, ...)
+
+  6.  ReplaceText / ScriptedTransform
+        └─ Construye el JSON final con la misma estructura que steam_producer.py
+           (event_id, ts, appid, game, current_players, health_score, ...)
+
+  7.  PublishKafka_2_6
+        Broker URI: localhost:9092
+        Topic:      gaming.events.raw
+        Key:        ${appid}
+
+  Rate limiting: añadir ControlRate antes de SteamSpy con
+                 Rate Control Criteria = "flowfile count"
+                 Maximum Rate          = "1"
+                 Time Duration         = "1 sec"
+
+  Para exportar el template real: botón derecho sobre el Process Group →
+  "Download flow definition" → guarda el JSON/XML en este directorio.
+-->
+<template>
+  <description>Placeholder — generar desde NiFi UI. Ver comentarios arriba.</description>
+  <name>gaming_pipeline</name>
+</template>
