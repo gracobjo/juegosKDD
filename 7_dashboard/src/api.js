@@ -6,12 +6,17 @@
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? "";
 
-async function apiFetch(path, params = {}) {
-  const url = new URL(`${BASE_URL}${path}`);
+function buildUrl(path, params = {}) {
+  const qs = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => {
-    if (v !== null && v !== undefined) url.searchParams.set(k, v);
+    if (v !== null && v !== undefined) qs.set(k, v);
   });
-  const res = await fetch(url.toString());
+  const query = qs.toString();
+  return `${BASE_URL}${path}${query ? `?${query}` : ""}`;
+}
+
+async function apiFetch(path, params = {}) {
+  const res = await fetch(buildUrl(path, params));
   if (!res.ok) throw new Error(`API error ${res.status} en ${path}`);
   return res.json();
 }

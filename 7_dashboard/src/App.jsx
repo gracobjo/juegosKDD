@@ -21,40 +21,40 @@ const ANTHROPIC_API_KEY = "";
 
 // ── KDD Stages ───────────────────────────────────────────────────────────────
 const KDD_STAGES = [
-  { id: "selection",      label: "Selection",     color: "#00f5d4" },
-  { id: "preprocessing",  label: "Preprocessing", color: "#fee440" },
-  { id: "transformation", label: "Transform",     color: "#f15bb5" },
-  { id: "mining",         label: "Mining",        color: "#9b5de5" },
-  { id: "evaluation",     label: "Evaluation",    color: "#00bbf9" },
+  { id: "selection",      label: "Selection",     color: "#0891b2" },
+  { id: "preprocessing",  label: "Preprocessing", color: "#ca8a04" },
+  { id: "transformation", label: "Transform",     color: "#db2777" },
+  { id: "mining",         label: "Mining",        color: "#7c3aed" },
+  { id: "evaluation",     label: "Evaluation",    color: "#2563eb" },
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const tierColor = (tier) =>
-  ({ massive: "#00f5d4", popular: "#fee440", active: "#f15bb5", niche: "#4a6a8a" }[tier] || "#4a6a8a");
+  ({ massive: "#0891b2", popular: "#ca8a04", active: "#db2777", niche: "#64748b" }[tier] || "#64748b");
 
 const severityColor = (s) =>
-  ({ info: "#00bbf9", warning: "#fee440", alert: "#f15bb5", critical: "#ff4d6d" }[s] || "#4a6a8a");
+  ({ info: "#2563eb", warning: "#ca8a04", alert: "#db2777", critical: "#dc2626" }[s] || "#64748b");
 
 // ── CSS (misma estética que el prototipo) ───────────────────────────────────
 const css = `
 @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;600;800&display=swap');
 * { box-sizing:border-box; margin:0; padding:0; }
 :root {
-  --bg0:#040810; --bg1:#080f1a; --border:rgba(0,245,212,0.15);
-  --cyan:#00f5d4; --yellow:#fee440; --pink:#f15bb5; --purple:#9b5de5;
-  --blue:#00bbf9; --red:#ff4d6d; --text:#c8e0f0; --muted:#4a6a8a;
+  --bg0:#f1f5f9; --bg1:#ffffff; --border:rgba(15,23,42,0.10);
+  --cyan:#0891b2; --yellow:#ca8a04; --pink:#db2777; --purple:#7c3aed;
+  --blue:#2563eb; --red:#dc2626; --text:#0f172a; --muted:#64748b;
   --mono:'Share Tech Mono',monospace; --display:'Barlow Condensed',sans-serif;
 }
 body { background:var(--bg0); color:var(--text); font-family:var(--display); }
 .app { min-height:100vh; position:relative; }
-.app::before { content:''; position:fixed; inset:0; background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px); pointer-events:none; z-index:9999; }
-.header { display:flex; align-items:center; justify-content:space-between; padding:12px 24px; background:linear-gradient(90deg,rgba(0,245,212,0.08),transparent 60%); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:100; backdrop-filter:blur(10px); }
+.app::before { content:''; position:fixed; inset:0; background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(15,23,42,0.02) 3px,rgba(15,23,42,0.02) 4px); pointer-events:none; z-index:9999; }
+.header { display:flex; align-items:center; justify-content:space-between; padding:12px 24px; background:linear-gradient(90deg,rgba(8,145,178,0.10),rgba(255,255,255,0.85) 60%); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:100; backdrop-filter:blur(10px); }
 .logo { font-size:22px; font-weight:800; letter-spacing:3px; color:var(--cyan); text-transform:uppercase; }
 .logo span { color:var(--yellow); }
 .badge { font-family:var(--mono); font-size:10px; color:var(--muted); border:1px solid var(--border); padding:3px 8px; border-radius:2px; }
 .live-dot { width:8px; height:8px; border-radius:50%; background:var(--cyan); animation:pulse 1.5s ease-in-out infinite; }
 .live-dot.error { background:var(--red); }
-@keyframes pulse { 0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(0,245,212,0.5)} 50%{opacity:.7;box-shadow:0 0 0 6px rgba(0,245,212,0)} }
+@keyframes pulse { 0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(8,145,178,0.5)} 50%{opacity:.7;box-shadow:0 0 0 6px rgba(8,145,178,0)} }
 .tabs { display:flex; border-bottom:1px solid var(--border); padding:0 24px; background:var(--bg1); }
 .tab { padding:10px 20px; font-family:var(--display); font-size:12px; font-weight:600; letter-spacing:2px; text-transform:uppercase; cursor:pointer; border:none; background:none; color:var(--muted); border-bottom:2px solid transparent; transition:all .2s; }
 .tab.active { color:var(--cyan); border-bottom-color:var(--cyan); }
@@ -80,15 +80,15 @@ body { background:var(--bg0); color:var(--text); font-family:var(--display); }
 .bar-chart { display:flex; flex-direction:column; gap:8px; }
 .bar-row { display:flex; align-items:center; gap:10px; }
 .bar-key { font-family:var(--mono); font-size:10px; color:var(--muted); width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex-shrink:0; }
-.bar-track { flex:1; height:6px; background:rgba(255,255,255,.05); border-radius:3px; overflow:hidden; }
+.bar-track { flex:1; height:6px; background:rgba(15,23,42,0.08); border-radius:3px; overflow:hidden; }
 .bar-fill { height:100%; border-radius:3px; transition:width .6s cubic-bezier(.16,1,.3,1); }
 .bar-val { font-family:var(--mono); font-size:10px; color:var(--muted); width:50px; text-align:right; }
-.feed-item { display:grid; grid-template-columns:auto 1fr auto; gap:10px; align-items:center; padding:10px; background:rgba(255,255,255,.02); border-left:2px solid; border-radius:0 4px 4px 0; font-family:var(--mono); font-size:10px; margin-bottom:6px; animation:slideIn .3s ease; }
+.feed-item { display:grid; grid-template-columns:auto 1fr auto; gap:10px; align-items:center; padding:10px; background:rgba(15,23,42,0.03); border-left:2px solid; border-radius:0 4px 4px 0; font-family:var(--mono); font-size:10px; margin-bottom:6px; animation:slideIn .3s ease; }
 @keyframes slideIn { from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:translateX(0)} }
 .feed-game { color:var(--text); font-size:12px; font-weight:600; }
 .feed-meta { color:var(--muted); font-size:10px; }
 .insight-item { display:flex; align-items:flex-start; gap:10px; padding:10px 12px; border-radius:4px; font-size:12px; line-height:1.4; margin-bottom:8px; border:1px solid; }
-.ai-panel { background:linear-gradient(135deg,rgba(155,93,229,.08),rgba(0,245,212,.05)); border:1px solid rgba(155,93,229,.2); border-radius:6px; padding:16px; }
+.ai-panel { background:linear-gradient(135deg,rgba(124,58,237,.06),rgba(8,145,178,.05)); border:1px solid rgba(124,58,237,.22); border-radius:6px; padding:16px; }
 .ai-header { display:flex; align-items:center; gap:8px; margin-bottom:12px; }
 .ai-dot { width:8px; height:8px; border-radius:50%; background:var(--purple); animation:pulse 2s ease-in-out infinite; }
 .ai-label { font-size:10px; font-weight:700; letter-spacing:3px; text-transform:uppercase; color:var(--purple); }
@@ -96,18 +96,18 @@ body { background:var(--bg0); color:var(--text); font-family:var(--display); }
 .ai-loading { color:var(--muted); font-family:var(--mono); font-size:11px; animation:blink 1s step-end infinite; }
 @keyframes blink { 50%{opacity:0} }
 .ai-prompt { display:flex; gap:8px; margin-top:12px; }
-.ai-input { flex:1; background:rgba(255,255,255,.04); border:1px solid var(--border); border-radius:4px; padding:8px 12px; font-family:var(--mono); font-size:11px; color:var(--text); outline:none; }
+.ai-input { flex:1; background:rgba(15,23,42,0.04); border:1px solid var(--border); border-radius:4px; padding:8px 12px; font-family:var(--mono); font-size:11px; color:var(--text); outline:none; }
 .ai-input:focus { border-color:var(--purple); }
-.ai-btn { padding:8px 16px; background:rgba(155,93,229,.2); border:1px solid rgba(155,93,229,.4); border-radius:4px; color:var(--purple); font-family:var(--display); font-size:11px; font-weight:600; letter-spacing:1px; text-transform:uppercase; cursor:pointer; transition:all .2s; }
+.ai-btn { padding:8px 16px; background:rgba(124,58,237,.12); border:1px solid rgba(124,58,237,.40); border-radius:4px; color:var(--purple); font-family:var(--display); font-size:11px; font-weight:600; letter-spacing:1px; text-transform:uppercase; cursor:pointer; transition:all .2s; }
 .ai-btn:disabled { opacity:.4; cursor:not-allowed; }
 .ctrl-btn { padding:6px 14px; font-family:var(--display); font-size:10px; font-weight:600; letter-spacing:2px; text-transform:uppercase; border:1px solid var(--border); border-radius:2px; background:none; color:var(--muted); cursor:pointer; transition:all .2s; margin-left:8px; }
 .ctrl-btn:hover { color:var(--text); border-color:var(--cyan); }
-.ctrl-btn.active { color:var(--cyan); border-color:var(--cyan); background:rgba(0,245,212,.08); }
-.error-banner { padding:10px 24px; background:rgba(255,77,109,.1); border-bottom:1px solid rgba(255,77,109,.3); font-family:var(--mono); font-size:11px; color:var(--red); }
+.ctrl-btn.active { color:var(--cyan); border-color:var(--cyan); background:rgba(8,145,178,0.10); }
+.error-banner { padding:10px 24px; background:rgba(220,38,38,0.08); border-bottom:1px solid rgba(220,38,38,0.25); font-family:var(--mono); font-size:11px; color:var(--red); }
 `;
 
 // ── Sparkline SVG ────────────────────────────────────────────────────────────
-function Sparkline({ data, color = "#00f5d4" }) {
+function Sparkline({ data, color = "#0891b2" }) {
   if (!data || data.length < 2) return null;
   const max = Math.max(...data);
   const min = Math.min(...data);
@@ -315,7 +315,7 @@ tendencias de jugadores, salud del catálogo y oportunidades de negocio. Máximo
             {kddSummary && (
               <div
                 className="badge"
-                style={{ color: "var(--purple)", borderColor: "rgba(155,93,229,0.3)" }}
+                style={{ color: "var(--purple)", borderColor: "rgba(124,58,237,0.30)" }}
               >
                 {(kddSummary.layers?.speed?.records || 0).toLocaleString()} WINDOWS
               </div>
@@ -530,14 +530,14 @@ tendencias de jugadores, salud del catálogo y oportunidades de negocio. Máximo
                       const maxP =
                         Math.max(...realtimeData.map((x) => x.avg_players || 0)) || 1;
                       const colors = [
-                        "#00f5d4",
-                        "#fee440",
-                        "#f15bb5",
-                        "#9b5de5",
-                        "#00bbf9",
-                        "#ff4d6d",
-                        "#f15bb5",
-                        "#00f5d4",
+                        "#0891b2",
+                        "#ca8a04",
+                        "#db2777",
+                        "#7c3aed",
+                        "#2563eb",
+                        "#dc2626",
+                        "#db2777",
+                        "#0891b2",
                       ];
                       return (
                         <div key={i} className="bar-row">
@@ -609,7 +609,7 @@ tendencias de jugadores, salud del catálogo y oportunidades de negocio. Máximo
                 <div className="section-title">
                   Batch Layer — Evolución Total Jugadores
                 </div>
-                <Sparkline data={history.players} color="#00f5d4" />
+                <Sparkline data={history.players} color="#0891b2" />
                 <div
                   style={{
                     fontFamily: "var(--mono)",
@@ -623,7 +623,7 @@ tendencias de jugadores, salud del catálogo y oportunidades de negocio. Máximo
               </div>
               <div className="section">
                 <div className="section-title">Batch Layer — Health Score Promedio</div>
-                <Sparkline data={history.health} color="#9b5de5" />
+                <Sparkline data={history.health} color="#7c3aed" />
                 <div
                   style={{
                     fontFamily: "var(--mono)",
@@ -649,14 +649,14 @@ tendencias de jugadores, salud del catálogo y oportunidades de negocio. Máximo
                     const maxP =
                       Math.max(...historicalData.map((x) => x.avg_players || 0)) || 1;
                     const colors = [
-                      "#00f5d4",
-                      "#fee440",
-                      "#f15bb5",
-                      "#9b5de5",
-                      "#00bbf9",
-                      "#ff4d6d",
-                      "#f15bb5",
-                      "#00f5d4",
+                      "#0891b2",
+                      "#ca8a04",
+                      "#db2777",
+                      "#7c3aed",
+                      "#2563eb",
+                      "#dc2626",
+                      "#db2777",
+                      "#0891b2",
                     ];
                     const growthColor =
                       (r.growth_rate || 0) >= 0 ? "var(--cyan)" : "var(--red)";
@@ -846,7 +846,7 @@ tendencias de jugadores, salud del catálogo y oportunidades de negocio. Máximo
                           fontSize: 9,
                           padding: "3px 8px",
                           borderRadius: 2,
-                          background: "rgba(255,255,255,0.05)",
+                          background: "rgba(15,23,42,0.05)",
                           color: "var(--muted)",
                         }}
                       >
@@ -874,7 +874,7 @@ tendencias de jugadores, salud del catálogo y oportunidades de negocio. Máximo
                       key={key}
                       style={{
                         padding: 12,
-                        background: "rgba(255,255,255,0.02)",
+                        background: "rgba(15,23,42,0.03)",
                         border: "1px solid var(--border)",
                         borderRadius: 4,
                       }}
