@@ -30,6 +30,10 @@ derby.log
 /tmp/kdd_checkpoint/
 checkpoint/
 
+# ── Runtime del pipeline (logs y PIDs locales) ────────────────────────────────
+0_infra/logs/
+0_infra/pids/
+
 # ── IDE ───────────────────────────────────────────────────────────────────────
 .idea/
 .vscode/

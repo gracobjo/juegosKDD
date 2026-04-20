@@ -48,11 +48,15 @@ def build_producer() -> KafkaProducer:
 
 # ── Funciones de fetching ─────────────────────────────────────────────────────
 def fetch_steam_players(appid: str) -> dict:
-    """Obtiene jugadores actuales de Steam."""
+    """Obtiene jugadores actuales de Steam. Este endpoint es público y
+    funciona sin API key (la key solo se añade si existe)."""
+    params = {"appid": appid}
+    if STEAM_API_KEY:
+        params["key"] = STEAM_API_KEY
     try:
         r = requests.get(
             "https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1/",
-            params={"appid": appid, "key": STEAM_API_KEY},
+            params=params,
             timeout=8,
         )
         r.raise_for_status()
@@ -98,11 +102,15 @@ def fetch_steamspy(appid: str) -> dict:
 
 
 def fetch_steam_achievements(appid: str) -> dict:
-    """Porcentajes globales de logros (top 5)."""
+    """Porcentajes globales de logros (top 5). Endpoint público sin key obligatoria.
+    Si no hay key, se llama igual pero algunos juegos pueden devolver 403."""
+    params = {"gameid": appid}
+    if STEAM_API_KEY:
+        params["key"] = STEAM_API_KEY
     try:
         r = requests.get(
             "https://api.steampowered.com/ISteamUserStats/GetGlobalAchievementPercentagesForApp/v2/",
-            params={"gameid": appid, "key": STEAM_API_KEY},
+            params=params,
             timeout=8,
         )
         r.raise_for_status()
@@ -116,7 +124,7 @@ def fetch_steam_achievements(appid: str) -> dict:
             "total_achievements": len(achievements),
         }
     except Exception as e:
-        log.warning(f"Achievements error appid={appid}: {e}")
+        log.debug(f"Achievements unavailable appid={appid}: {e}")
         return {"top_achievements": [], "total_achievements": 0}
 
 

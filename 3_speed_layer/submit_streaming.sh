@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     --master "local[*]" \
     --driver-memory 2g \
     --executor-memory 2g \
-    --packages "org.apache.spark:spark-sql-kafka-0-10_2.12:3.3.0,com.datastax.spark:spark-cassandra-connector_2.12:3.3.0" \
+    --packages "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,com.datastax.spark:spark-cassandra-connector_2.12:3.5.1" \
     --conf "spark.cassandra.connection.host=localhost" \
     --conf "spark.cassandra.connection.port=9042" \
     "$SCRIPT_DIR/spark_streaming_kdd.py"

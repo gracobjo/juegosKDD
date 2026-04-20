@@ -95,7 +95,7 @@ with DAG(
             f"{SPARK} "
             "--master local[*] "
             "--driver-memory 2g --executor-memory 2g "
-            "--packages com.datastax.spark:spark-cassandra-connector_2.12:3.3.0 "
+            "--packages com.datastax.spark:spark-cassandra-connector_2.12:3.5.1 "
             "--conf spark.cassandra.connection.host=localhost "
             f"{PROJECT_DIR}/4_batch_layer/spark_batch_kdd.py "
             "--date={{ ds }}"

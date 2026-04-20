@@ -75,8 +75,8 @@ spark = (
     .appName("KDD_Gaming_SpeedLayer")
     .config(
         "spark.jars.packages",
-        "org.apache.spark:spark-sql-kafka-0-10_2.12:3.3.0,"
-        "com.datastax.spark:spark-cassandra-connector_2.12:3.3.0",
+        "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,"
+        "com.datastax.spark:spark-cassandra-connector_2.12:3.5.1",
     )
     .config("spark.cassandra.connection.host", "localhost")
     .config("spark.cassandra.connection.port", "9042")
@@ -91,7 +91,7 @@ raw_stream = (
     .format("kafka")
     .option("kafka.bootstrap.servers", "localhost:9092")
     .option("subscribe", "gaming.events.raw")
-    .option("startingOffsets", "latest")
+    .option("startingOffsets", "earliest")
     .option("maxOffsetsPerTrigger", 1000)
     .load()
 )
@@ -140,12 +140,14 @@ transformed = (
     )
 )
 
-# ── 4. MINING — Agregaciones por ventana de 5 minutos ────────────────────────
+# ── 4. MINING — Agregaciones por ventana de 1 minuto (dev-friendly) ─────────
+# En producción, subir a window=5min y watermark=10min. Reducido para que el
+# dashboard muestre datos dentro del primer par de minutos tras arrancar.
 windowed = (
     transformed
-    .withWatermark("processed_at", "10 minutes")
+    .withWatermark("processed_at", "2 minutes")
     .groupBy(
-        window("processed_at", "5 minutes"),
+        window("processed_at", "1 minute"),
         col("game"),
         col("appid"),
         col("genre"),
@@ -184,7 +186,9 @@ WINDOW_COLUMNS = [
 # ── 5. EVALUATION — Generar insights automáticos ─────────────────────────────
 def write_batch(batch_df, batch_id):
     """foreachBatch: escribe ventanas en Cassandra y genera insights KDD."""
-    if batch_df.rdd.isEmpty():
+    n = batch_df.count()
+    print(f"▸ [speed] batch {batch_id}: {n} ventanas agregadas", flush=True)
+    if n == 0:
         return
 
     # → Serving Layer (Cassandra): player_windows
@@ -193,6 +197,7 @@ def write_batch(batch_df, batch_id):
         .mode("append") \
         .options(table="player_windows", keyspace="gaming_kdd") \
         .save()
+    print(f"  ✓ {n} filas escritas en gaming_kdd.player_windows", flush=True)
 
     # → Fase Evaluation: reglas sobre el batch agregado
     insights = []
@@ -236,6 +241,7 @@ def write_batch(batch_df, batch_id):
             .mode("append") \
             .options(table="kdd_insights", keyspace="gaming_kdd") \
             .save()
+        print(f"  ✓ {len(insights)} insights escritos en gaming_kdd.kdd_insights", flush=True)
 
 
 # ── Arrancar streaming ────────────────────────────────────────────────────────

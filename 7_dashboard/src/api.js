@@ -1,8 +1,10 @@
 // api.js — Cliente REST hacia FastAPI (Serving Layer)
-// La URL base se puede sobreescribir con la variable de entorno VITE_API_URL.
-// Por defecto apunta al proxy de Vite hacia http://localhost:8000.
+// Por defecto usa URL relativa ("") para que Vite proxee /api/* a FastAPI
+// (ver vite.config.js). Esto funciona desde cualquier host (localhost,
+// nodo1.home, IP remota, etc.) y evita problemas de CORS.
+// Puedes sobreescribir con VITE_API_URL si el frontend se sirve sin proxy.
 
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const BASE_URL = import.meta.env.VITE_API_URL ?? "";
 
 async function apiFetch(path, params = {}) {
   const url = new URL(`${BASE_URL}${path}`);

@@ -48,7 +48,7 @@ spark = (
     .appName(f"KDD_Gaming_BatchLayer_{PROCESS_DATE}")
     .config(
         "spark.jars.packages",
-        "com.datastax.spark:spark-cassandra-connector_2.12:3.3.0",
+        "com.datastax.spark:spark-cassandra-connector_2.12:3.5.1",
     )
     .config("spark.cassandra.connection.host", "localhost")
     .enableHiveSupport()
