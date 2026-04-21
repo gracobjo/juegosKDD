@@ -20,6 +20,9 @@ echo "   BOOTSTRAP  : $BOOTSTRAP"
 echo ""
 
 # Usamos arrays paralelos (compatible con bash antiguo)
+# Se incluyen los topics del pipeline original (eventos Steam) y los del
+# sistema de recomendacion hibrido (interacciones user-game, recomendaciones,
+# senales de actualizacion de modelo).
 TOPIC_NAMES=(
     "gaming.events.raw"
     "gaming.events.processed"

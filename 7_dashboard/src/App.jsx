@@ -14,6 +14,8 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { api } from "./api.js";
+import RecommendationsTab from "./components/RecommendationsTab.jsx";
+import AgentsTab from "./components/AgentsTab.jsx";
 
 // ── KDD Stages ───────────────────────────────────────────────────────────────
 const KDD_STAGES = [
@@ -385,6 +387,8 @@ export default function App() {
           {[
             ["realtime", "⚡ Tiempo Real"],
             ["historical", "📊 Histórico"],
+            ["recommendations", "🎮 Recomendaciones"],
+            ["agents", "🤖 Agentes IA"],
             ["insights", "🔬 KDD Insights"],
             ["recommendations", "🎮 Recomendaciones"],
             ["system", "🤖 Sistema"],
@@ -675,6 +679,10 @@ export default function App() {
         )}
 
         {/* ── TAB: KDD INSIGHTS ── */}
+        {tab === "recommendations" && <RecommendationsTab />}
+
+        {tab === "agents" && <AgentsTab />}
+
         {tab === "insights" && (
           <div className="section border-top">
             <div className="section-title">
