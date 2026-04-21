@@ -15,10 +15,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { api } from "./api.js";
 
-// Pega aquí tu API key de Anthropic si quieres habilitar el panel de IA
-// (en local es necesario; en claude.ai la key se inyecta automáticamente).
-const ANTHROPIC_API_KEY = "";
-
 // ── KDD Stages ───────────────────────────────────────────────────────────────
 const KDD_STAGES = [
   { id: "selection",      label: "Selection",     color: "#0891b2" },
@@ -147,10 +143,14 @@ export default function App() {
   const [history, setHistory] = useState({ players: [], health: [] });
   const [kddStageActive, setKddStageActive] = useState(0);
   const [aiResponse, setAiResponse] = useState(
-    "Conectando con el Serving Layer (Cassandra)..."
+    "Pulsa «Análisis sistema» para leer el agente monitor (sin LLM externo)."
   );
   const [aiLoading, setAiLoading] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
+  const [recUserId, setRecUserId] = useState("151603717");
+  const [recAgent, setRecAgent] = useState(null);
+  const [recLoading, setRecLoading] = useState(false);
+  const [monitorJson, setMonitorJson] = useState(null);
   const intervalRef = useRef(null);
 
   // Animación de fase KDD activa
@@ -205,10 +205,9 @@ export default function App() {
     return () => clearInterval(intervalRef.current);
   }, [autoRefresh, fetchAll]);
 
-  // IA: analizar datos reales de Cassandra
-  const askAI = useCallback(
-    async (customPrompt) => {
-      setAiLoading(true);
+  const runSystemAnalysis = useCallback(async () => {
+    setAiLoading(true);
+    try {
       const topGame = [...realtimeData].sort(
         (a, b) => (b.avg_players || 0) - (a.avg_players || 0)
       )[0];
@@ -222,49 +221,21 @@ export default function App() {
         (i) => i.severity === "critical" || i.severity === "alert"
       ).length;
 
-      const prompt =
-        customPrompt ||
-        `Analiza estos datos reales de Steam (vía KDD+Lambda):
-- Juego más activo: ${topGame?.game || "N/D"} con ${topGame?.avg_players?.toLocaleString() || 0} jugadores promedio
-- Health score promedio del catálogo: ${avgHealth}/100
-- Alertas KDD activas: ${critInsights}
-- Juegos monitoreados: ${realtimeData.length}
-- Últimos insights: ${insights.slice(0, 3).map((i) => i.message).join(" | ")}
-
-Como analista KDD de videojuegos, dame 3 insights accionables en español sobre:
-tendencias de jugadores, salud del catálogo y oportunidades de negocio. Máximo 120 palabras.`;
-
-      try {
-        const headers = { "Content-Type": "application/json" };
-        if (ANTHROPIC_API_KEY) {
-          headers["x-api-key"] = ANTHROPIC_API_KEY;
-          headers["anthropic-version"] = "2023-06-01";
-          headers["anthropic-dangerous-direct-browser-access"] = "true";
-        }
-        const response = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            model: "claude-sonnet-4-20250514",
-            max_tokens: 1000,
-            messages: [{ role: "user", content: prompt }],
-          }),
-        });
-        const data = await response.json();
-        setAiResponse(
-          data?.content?.map((c) => c.text || "").join("") ||
-            data?.error?.message ||
-            "Sin respuesta."
-        );
-      } catch (err) {
-        setAiResponse(
-          `Error conectando con Claude API: ${err.message}\n\nAsegúrate de haber configurado ANTHROPIC_API_KEY al inicio de src/App.jsx.`
-        );
-      }
-      setAiLoading(false);
-    },
-    [realtimeData, insights]
-  );
+      const mon = await api.agentMonitor();
+      setMonitorJson(mon);
+      const drift = mon.drift_detected ? "Sí" : "No";
+      setAiResponse(
+        `Steam (Speed/Batch): juego top ${topGame?.game || "N/D"} · health medio ${avgHealth}/100 · alertas ${critInsights}.\n` +
+          `Recomendador: drift=${drift}. ${mon.diagnosis || ""}\n` +
+          (mon.retraining_triggered
+            ? "Se intentó disparar reentrenamiento vía Airflow."
+            : "")
+      );
+    } catch (err) {
+      setAiResponse(`No se pudo leer /api/agent/monitor: ${err.message}`);
+    }
+    setAiLoading(false);
+  }, [realtimeData, insights]);
 
   // ── Métricas agregadas ────────────────────────────────────────────────────
   const totalPlayers = realtimeData.reduce((s, r) => s + (r.avg_players || 0), 0);
@@ -290,15 +261,23 @@ tendencias de jugadores, salud del catálogo y oportunidades de negocio. Máximo
 
   const sendCustomPrompt = () => {
     if (!aiPrompt.trim()) return;
-    const ctx = realtimeData
-      .slice(0, 3)
-      .map((r) => `${r.game}=${r.avg_players?.toLocaleString()} jugadores`)
-      .join(", ");
-    askAI(
-      `Contexto KDD Gaming real: ${ctx}.\nPregunta: ${aiPrompt}\nResponde en español, máximo 100 palabras.`
+    setAiResponse(
+      `Nota libre registrada: «${aiPrompt}». ` +
+        `Las explicaciones detalladas por juego están en la pestaña Recomendaciones (API heurística).`
     );
     setAiPrompt("");
   };
+
+  const loadRecommendations = useCallback(async () => {
+    setRecLoading(true);
+    try {
+      const data = await api.agentRecommend(recUserId.trim() || "151603717");
+      setRecAgent(data);
+    } catch (e) {
+      setRecAgent({ error: e.message });
+    }
+    setRecLoading(false);
+  }, [recUserId]);
 
   return (
     <>
@@ -331,8 +310,8 @@ tendencias de jugadores, salud del catálogo y oportunidades de negocio. Máximo
             <button className="ctrl-btn" onClick={fetchAll}>
               ↻ REFRESH
             </button>
-            <button className="ctrl-btn" onClick={() => askAI(null)}>
-              ⚡ AI INSIGHT
+            <button className="ctrl-btn" onClick={() => runSystemAnalysis()}>
+              ⚡ Análisis sistema
             </button>
           </div>
           <div
@@ -407,6 +386,8 @@ tendencias de jugadores, salud del catálogo y oportunidades de negocio. Máximo
             ["realtime", "⚡ Tiempo Real"],
             ["historical", "📊 Histórico"],
             ["insights", "🔬 KDD Insights"],
+            ["recommendations", "🎮 Recomendaciones"],
+            ["system", "🤖 Sistema"],
             ["lambda", "λ Arquitectura"],
           ].map(([id, label]) => (
             <button
@@ -566,14 +547,12 @@ tendencias de jugadores, salud del catálogo y oportunidades de negocio. Máximo
                 <div className="ai-header">
                   <div className="ai-dot" />
                   <div className="ai-label">
-                    KDD Intelligence — Claude AI · Datos Reales Steam
+                    KDD Intelligence — Monitor heurístico (FastAPI)
                   </div>
                 </div>
                 <div className="ai-response">
                   {aiLoading ? (
-                    <span className="ai-loading">
-                      Analizando datos reales de Steam con KDD▋
-                    </span>
+                    <span className="ai-loading">Consultando métricas del recomendador▋</span>
                   ) : (
                     aiResponse
                   )}
@@ -581,7 +560,7 @@ tendencias de jugadores, salud del catálogo y oportunidades de negocio. Máximo
                 <div className="ai-prompt">
                   <input
                     className="ai-input"
-                    placeholder="Pregunta sobre los datos reales de Steam..."
+                    placeholder="Nota / contexto (no llama a LLM externo)..."
                     value={aiPrompt}
                     onChange={(e) => setAiPrompt(e.target.value)}
                     onKeyDown={(e) => {
@@ -747,6 +726,88 @@ tendencias de jugadores, salud del catálogo y oportunidades de negocio. Máximo
           </div>
         )}
 
+        {tab === "recommendations" && (
+          <div className="section border-top">
+            <div className="section-title">Recomendador híbrido (ALS + TF-IDF)</div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+              <input
+                className="ai-input"
+                style={{ maxWidth: 260 }}
+                value={recUserId}
+                onChange={(e) => setRecUserId(e.target.value)}
+                placeholder="user_id (Kaggle Steam behaviors)"
+              />
+              <button
+                className="ai-btn"
+                disabled={recLoading}
+                type="button"
+                onClick={() => loadRecommendations()}
+              >
+                Cargar explicaciones
+              </button>
+            </div>
+            {recLoading && (
+              <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)" }}>
+                Consultando /api/agent/recommend …
+              </div>
+            )}
+            {recAgent?.error && (
+              <div style={{ color: "var(--red)", fontFamily: "var(--mono)", fontSize: 12 }}>
+                {recAgent.error}
+              </div>
+            )}
+            {recAgent && !recAgent.error && (
+              <div style={{ display: "grid", gap: 10 }}>
+                {(recAgent.recommendations || []).map((r, idx) => (
+                  <div
+                    key={idx}
+                    className="insight-item"
+                    style={{
+                      borderColor: "rgba(8,145,178,0.35)",
+                      background: "rgba(8,145,178,0.06)",
+                    }}
+                  >
+                    <div style={{ fontWeight: 700, marginBottom: 6 }}>{r.game}</div>
+                    <div
+                      style={{
+                        fontFamily: "var(--mono)",
+                        fontSize: 10,
+                        color: "var(--muted)",
+                        marginBottom: 6,
+                      }}
+                    >
+                      score {Number(r.hybrid_score || 0).toFixed(3)} · CF {Number(
+                        r.cf_component || 0
+                      ).toFixed(2)} · CB {Number(r.cb_component || 0).toFixed(2)}
+                    </div>
+                    <div style={{ fontSize: 12, lineHeight: 1.5 }}>{r.explanation}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === "system" && (
+          <div className="section border-top">
+            <div className="section-title">Métricas del modelo (Cassandra)</div>
+            <button className="ctrl-btn active" type="button" onClick={() => runSystemAnalysis()}>
+              Refrescar monitor
+            </button>
+            <div style={{ marginTop: 16, fontFamily: "var(--mono)", fontSize: 11, color: "var(--text)" }}>
+              {monitorJson ? (
+                <pre style={{ whiteSpace: "pre-wrap", lineHeight: 1.4 }}>
+                  {JSON.stringify(monitorJson, null, 2)}
+                </pre>
+              ) : (
+                <span style={{ color: "var(--muted)" }}>
+                  Sin datos todavía. Ejecuta el pipeline `kdd_pipeline.py` y vuelve a pulsar.
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* ── TAB: LAMBDA ARCH ── */}
         {tab === "lambda" && (
           <div className="section border-top">
@@ -794,14 +855,13 @@ tendencias de jugadores, salud del catálogo y oportunidades de negocio. Máximo
                   cls: "serving",
                   title: "◈ Serving Layer — Apache Cassandra + FastAPI",
                   desc:
-                    "Cassandra almacena player_windows (Speed) y game_stats_daily (Batch). FastAPI expone REST API en :8000. Dashboard React consulta cada 15s.",
+                    "Cassandra: gaming_kdd (Steam) + gaming_recommender (ALS/TF-IDF). FastAPI :8000 expone métricas, similares y agentes heurísticos.",
                   tech: [
                     "Apache Cassandra",
                     "FastAPI",
-                    "gaming_kdd keyspace",
-                    "player_windows table",
-                    "game_stats_daily table",
-                    "kdd_insights table",
+                    "gaming_kdd + gaming_recommender",
+                    "gaming.user.interactions",
+                    "kdd_pipeline.py",
                   ],
                   color: "var(--yellow)",
                 },

@@ -25,9 +25,15 @@ TOPIC_NAMES=(
     "gaming.events.processed"
     "gaming.kdd.insights"
     "gaming.batch.trigger"
+    "gaming.user.interactions"
+    "gaming.recommendations"
+    "gaming.model.updates"
 )
 TOPIC_PARTITIONS=(
     "3"
+    "3"
+    "1"
+    "1"
     "3"
     "1"
     "1"

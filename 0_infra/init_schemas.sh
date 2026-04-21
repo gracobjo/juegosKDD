@@ -19,8 +19,9 @@
 
 set -u
 
-ROOT="/home/hadoop/juegosKDD"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export KAFKA_HOME="${KAFKA_HOME:-/opt/kafka}"
+PY="${ROOT}/venv/bin/python3"
 
 C_BLUE="\033[1;34m"; C_GREEN="\033[1;32m"; C_YELLOW="\033[1;33m"
 C_RED="\033[1;31m";  C_GREY="\033[0;90m"; C_RESET="\033[0m"
@@ -41,14 +42,26 @@ check_all() {
         -e "SHOW TABLES IN gaming_kdd;" 2>/dev/null | sed 's/^/    /' \
         || warn "gaming_kdd aún no existe"
 
-    log "Cassandra keyspaces existentes"
-    cqlsh -e "DESCRIBE KEYSPACES;" 2>/dev/null | sed 's/^/    /'
+    log "Cassandra keyspaces existentes (vía driver Python, sin cqlsh)"
+    if [ -x "$PY" ]; then
+        "$PY" "$ROOT/0_infra/apply_cassandra_schema.py" --list-keyspaces 2>/dev/null | sed 's/^/    /' \
+            || warn "No se pudo listar keyspaces (¿venv y cassandra-driver?)"
+    else
+        warn "Sin $PY — instala venv: bash 0_infra/setup_venv.sh"
+    fi
 
     log "Cassandra tablas dentro de gaming_kdd (si existe)"
-    if cqlsh -e "DESCRIBE KEYSPACE gaming_kdd;" >/dev/null 2>&1; then
-        cqlsh -k gaming_kdd -e "DESCRIBE TABLES;" 2>/dev/null | sed 's/^/    /'
+    if [ -x "$PY" ] && "$PY" "$ROOT/0_infra/apply_cassandra_schema.py" --exists gaming_kdd &>/dev/null; then
+        "$PY" "$ROOT/0_infra/apply_cassandra_schema.py" --tables gaming_kdd 2>/dev/null | sed 's/^/    /'
     else
         warn "keyspace gaming_kdd aún no existe"
+    fi
+
+    log "Cassandra tablas dentro de gaming_recommender (si existe)"
+    if [ -x "$PY" ] && "$PY" "$ROOT/0_infra/apply_cassandra_schema.py" --exists gaming_recommender &>/dev/null; then
+        "$PY" "$ROOT/0_infra/apply_cassandra_schema.py" --tables gaming_recommender 2>/dev/null | sed 's/^/    /'
+    else
+        warn "keyspace gaming_recommender aún no existe"
     fi
 
     log "Kafka topics existentes (filtrados por gaming.*)"
@@ -87,8 +100,13 @@ init_cassandra() {
         return 1
     fi
 
-    cqlsh -f "$ROOT/5_serving_layer/cassandra_schema.cql" 2>&1 | sed 's/^/    /'
-    ok "Cassandra: keyspace gaming_kdd listo"
+    CPY="${ROOT}/venv/bin/python3"
+    if [ ! -x "$CPY" ]; then
+        CPY="python3"
+        warn "Sin venv en $ROOT/venv — usando $CPY (asegúrate de tener cassandra-driver)"
+    fi
+    "$CPY" "$ROOT/0_infra/apply_cassandra_schema.py" "$ROOT/5_serving_layer/cassandra_schema.cql" 2>&1 | sed 's/^/    /'
+    ok "Cassandra: keyspaces gaming_kdd + gaming_recommender listos"
 }
 
 # ── KAFKA ────────────────────────────────────────────────────────────────────

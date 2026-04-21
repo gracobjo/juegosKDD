@@ -8,7 +8,7 @@
 
 set -u
 
-ROOT="/home/hadoop/juegosKDD"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV="$ROOT/venv"
 
 C_BLUE="\033[1;34m"; C_GREEN="\033[1;32m"; C_YELLOW="\033[1;33m"
@@ -31,14 +31,14 @@ fi
 log "Instalando dependencias..."
 "$VENV/bin/pip" install --upgrade pip wheel setuptools >/dev/null 2>&1
 "$VENV/bin/pip" install -r "$ROOT/requirements.txt" || { err "Fallo instalando dependencias"; exit 1; }
-ok "Dependencias instaladas"
+ok "Dependencias instaladas (FastAPI, pandas, scikit-learn, kaggle, kagglehub — ver requirements.txt)"
 
 # 3) Preparar .env si no existe
 if [ ! -f "$ROOT/.env" ]; then
     if [ -f "$ROOT/.env.example" ]; then
         cp "$ROOT/.env.example" "$ROOT/.env"
         ok ".env creado a partir de .env.example"
-        warn "Edita $ROOT/.env si necesitas añadir STEAM_API_KEY o ANTHROPIC_API_KEY"
+        warn "Edita $ROOT/.env (p. ej. STEAM_API_KEY, KAFKA_BOOTSTRAP, CASSANDRA_HOST)"
     else
         warn ".env.example no existe, saltando"
     fi
@@ -52,4 +52,4 @@ log "Venv listo para usar:"
 echo "    source $VENV/bin/activate"
 echo ""
 log "Paquetes principales instalados:"
-"$VENV/bin/pip" list 2>/dev/null | grep -iE 'kafka|requests|fastapi|uvicorn|cassandra|dotenv|pydantic' | sed 's/^/    /'
+"$VENV/bin/pip" list 2>/dev/null | grep -iE 'kafka|requests|fastapi|uvicorn|cassandra|dotenv|pydantic|pandas|scikit|kaggle|kagglehub|numpy' | sed 's/^/    /'

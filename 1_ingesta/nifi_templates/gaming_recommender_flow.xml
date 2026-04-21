@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Plantilla NiFi (placeholder) — Gaming Recommender
+  Reproduce manualmente en NiFi 2.x:
+    InvokeHTTP (FreeToGame / SteamSpy) → ConvertRecord → PublishKafka_2_6
+    Topics: gaming.events.raw, gaming.user.interactions
+  O usa los productores Python en 1_ingesta/api_producer/.
+-->
+<templateEncodingVersion>1.0</templateEncodingVersion>

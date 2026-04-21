@@ -17,17 +17,20 @@ con datos reales provenientes de la Steam Web API + SteamSpy.
 
 ```
 kdd-lambda-gaming/
+├── 0_data/kaggle/                      # Descarga/validación datasets Kaggle
 ├── 1_ingesta/
-│   ├── nifi_flow/gaming_pipeline.xml   # Placeholder del flow NiFi
-│   └── producer/                       # Producer Python alternativo (Steam→Kafka)
-├── 2_kafka/setup_topics.sh             # Crea los topics Kafka
-├── 3_speed_layer/                      # Spark Streaming + KDD online
-├── 4_batch_layer/                      # Spark Batch + Hive DDL
+│   ├── nifi_flow/ + nifi_templates/    # NiFi (Steam + plantilla recomendador)
+│   ├── producer/                       # Steam → Kafka
+│   ├── kaggle_to_hive/                 # CSV Kaggle → Hive gaming_recommender
+│   └── api_producer/                   # FreeToGame / SteamSpy → Kafka
+├── 2_kafka/setup_topics.sh             # Topics gaming.* (incl. user.interactions)
+├── 3_speed_layer/                      # Spark Streaming Steam + recomendador
+├── 4_batch_layer/                      # Batch Steam + pipeline ALS/TF-IDF híbrido
 ├── 5_serving_layer/
-│   ├── cassandra_schema.cql
-│   └── api/                            # FastAPI REST en :8000
-├── 6_orchestration/dags/               # DAG Airflow diario
-└── 7_dashboard/                        # React + Vite en :5173
+│   ├── cassandra_schema.cql            # gaming_kdd + gaming_recommender
+│   └── api/                            # FastAPI :8000 (ambos keyspaces)
+├── 6_orchestration/dags/               # DAGs Airflow (Steam + recomendador opcional)
+└── 7_dashboard/                        # React + Vite :5173
 ```
 
 ## Paso 1 — Configurar credenciales
@@ -37,8 +40,8 @@ cp .env.example .env
 # Editar .env con tu STEAM_API_KEY (https://steamcommunity.com/dev/apikey)
 ```
 
-Para habilitar el panel IA del dashboard, pega tu clave Anthropic en
-`7_dashboard/src/App.jsx` → constante `ANTHROPIC_API_KEY`.
+El dashboard usa el **agente monitor heurístico** vía FastAPI (`/api/agent/monitor`)
+y explicaciones locales (`/api/agent/recommend/{user_id}`), sin LLM externo.
 
 ## Paso 2 — Inicializar Kafka
 
@@ -50,9 +53,18 @@ $KAFKA_HOME/bin/kafka-topics.sh --list --bootstrap-server localhost:9092
 
 ## Paso 3 — Inicializar Cassandra
 
+Si el `cqlsh` de tu instalación falla en Python 3.12 (p. ej. `asyncore` / libev), usa el **venv** y el aplicador con `cassandra-driver`:
+
+```bash
+source venv/bin/activate
+python3 0_infra/apply_cassandra_schema.py
+python3 0_infra/apply_cassandra_schema.py --exists gaming_kdd && echo OK gaming_kdd
+```
+
+Equivalente clásico (si tu `cqlsh` funciona):
+
 ```bash
 cqlsh -f 5_serving_layer/cassandra_schema.cql
-cqlsh -e "DESCRIBE KEYSPACE gaming_kdd;"
 ```
 
 ## Paso 4 — Inicializar Hive
@@ -154,8 +166,8 @@ curl http://localhost:8000/api/realtime | python3 -m json.tool | head -30
 ## Obtener API Keys gratuitas
 
 - **Steam Web API** — https://steamcommunity.com/dev/apikey (requiere login Steam)
-- **SteamSpy** — sin key, uso libre (respetar 1 req/s)
-- **Anthropic Claude** — https://console.anthropic.com (créditos gratuitos al registrarse)
+- **SteamSpy / FreeToGame** — sin key (respetar rate limits)
+- **Kaggle** — `python3 0_data/kaggle/download_datasets.py` usa **kagglehub** por defecto; credenciales: `KAGGLE_API_TOKEN` en `.env`, o `~/.kaggle/kaggle.json`, o `KAGGLE_USERNAME` + `KAGGLE_KEY`
 - **RAWG** (opcional) — https://rawg.io/apidocs
 
 ## Notas de producción
@@ -165,7 +177,6 @@ curl http://localhost:8000/api/realtime | python3 -m json.tool | head -30
 3. FastAPI usa `ALLOW FILTERING` en Cassandra — en prod conviene añadir
    materialized views o índices secundarios adicionales.
 4. El dashboard hace polling cada 15s (configurable en `useEffect` de `App.jsx`).
-5. Todas las keys van en `.env` (cargadas vía `python-dotenv` / `import.meta.env`).
-6. El panel IA del dashboard llama directamente a `api.anthropic.com` desde el
-   navegador: en producción conviene hacer el paso por un backend para no
-   exponer la clave.
+5. Las credenciales van en `.env` (cargadas vía `python-dotenv` / `import.meta.env`).
+6. Las explicaciones del recomendador pasan por FastAPI (`/api/agent/recommend`) con
+   reglas locales; no se expone ninguna clave de LLM en el frontend.
