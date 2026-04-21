@@ -8,6 +8,37 @@ agentes IA. **No** explica cómo instalar el sistema (eso está en
 
 ---
 
+## 0. Arranque y parada (referencia rápida)
+
+Si el stack no está corriendo, arráncalo desde una terminal en
+`/home/hadoop/juegosKDD`:
+
+```bash
+# Arranque (infra + apps + speed layer + demo de eventos)
+bash 0_infra/start_stack.sh                        # HDFS, Kafka, Cassandra, Hive, Airflow
+bash 0_infra/start_pipeline.sh all                 # Producer + Spark Streaming + FastAPI + Dashboard
+
+# (opcional) Recomendador en tiempo real + producer demo
+nohup bash 3_speed_layer/submit_streaming_recommender.sh \
+      > 0_infra/logs/streaming_recommender.log 2>&1 &
+nohup venv/bin/python 1_ingesta/api_producer/synthetic_interactions_producer.py --rate 5 \
+      > 0_infra/logs/synthetic_producer.log 2>&1 &
+```
+
+Para parar todo:
+
+```bash
+bash 0_infra/start_pipeline.sh stop                # producer + streaming + api + dashboard
+pkill -f streaming_recommender.py                  # speed layer del recomendador
+pkill -f synthetic_interactions_producer.py        # producer demo
+bash 0_infra/stop_stack.sh                         # Airflow → Hive → Cassandra → Kafka → HDFS
+```
+
+> El procedimiento detallado paso a paso está en
+> [`05_manual_desarrollador.md` §5.3 (arranque) y §5.4 (parada)](05_manual_desarrollador.md).
+
+---
+
 ## 1. Acceso al sistema
 
 | Recurso | URL |

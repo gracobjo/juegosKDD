@@ -335,7 +335,145 @@ curl -s http://localhost:8090/api/v1/dags | jq '.dags[].dag_id'
 | Producers | stdout |
 | Airflow | `0_infra/airflow_home/logs/dag_id=.../task_id=.../...log` |
 
-### 5.3 Procedimientos comunes
+### 5.3 Arranque completo (orden recomendado)
+
+El sistema se arranca **de abajo a arriba**: primero la infraestructura
+(HDFS, Kafka, Cassandra, Hive, Airflow), luego los esquemas, luego las
+aplicaciones (FastAPI, dashboard) y, opcionalmente, el speed layer y
+los producers de demo.
+
+```bash
+cd /home/hadoop/juegosKDD
+
+# ── 1. Infraestructura (HDFS → Kafka → Cassandra → Hive → Airflow) ──
+bash 0_infra/start_stack.sh
+bash 0_infra/start_stack.sh --status         # verificar puertos abiertos
+
+# ── 2. Esquemas (idempotente, solo la primera vez o tras un reset) ──
+bash 2_kafka/setup_topics.sh                 # 7 topics Kafka
+cqlsh -f 5_serving_layer/cassandra_schema.cql       # keyspace gaming_kdd
+cqlsh -f 5_serving_layer/recommender_schema.cql     # keyspace gaming_recommender
+beeline -u jdbc:hive2://localhost:10000 -n hadoop \
+        -f 4_batch_layer/hive_schema.sql            # databases Hive
+
+# ── 3. Datos (Kaggle → HDFS/Hive) — solo la primera vez ─────────────
+python 0_data/kaggle/download_datasets.py
+python 0_data/kaggle/validate_datasets.py
+bash   1_ingesta/kaggle_to_hive/run_loader.sh
+
+# ── 4. Pipeline KDD batch (genera modelo + recomendaciones) ─────────
+bash 4_batch_layer/recommender/submit_kdd.sh        # ~5–10 min
+
+# ── 5. Aplicaciones (API + dashboard) ───────────────────────────────
+nohup /home/hadoop/juegosKDD/venv/bin/python \
+      5_serving_layer/api/main.py \
+      > 0_infra/logs/api.log 2>&1 &
+echo $! > 0_infra/pids/api.pid
+
+nohup bash -c 'cd 7_dashboard && npm run dev -- --host 0.0.0.0' \
+      > 0_infra/logs/dashboard.log 2>&1 &
+echo $! > 0_infra/pids/dashboard.pid
+
+# ── 6. Speed Layer del recomendador (opcional, demo en tiempo real) ─
+nohup bash 3_speed_layer/submit_streaming_recommender.sh \
+      > 0_infra/logs/streaming_recommender.log 2>&1 &
+echo $! > 0_infra/pids/streaming_recommender.pid
+
+# ── 7. Producer sintético (opcional, alimenta el speed con user_id reales) ─
+nohup /home/hadoop/juegosKDD/venv/bin/python \
+      1_ingesta/api_producer/synthetic_interactions_producer.py \
+      --rate 5 --users 200 --games 300 \
+      > 0_infra/logs/synthetic_producer.log 2>&1 &
+echo $! > 0_infra/pids/synthetic_producer.pid
+
+# ── 8. Verificación ─────────────────────────────────────────────────
+curl -s http://localhost:8000/health | jq .
+curl -s http://localhost:8000/api/keyspaces | jq .
+xdg-open http://localhost:5173      # dashboard
+xdg-open http://localhost:8090      # Airflow UI
+```
+
+**Atajo rápido** (después de cargar datos al menos una vez):
+
+```bash
+# Infra + esquemas + apps usando los scripts del proyecto
+bash 0_infra/start_stack.sh
+bash 0_infra/start_pipeline.sh all     # producer + streaming + api + dashboard
+```
+
+> El script `0_infra/start_pipeline.sh all` lanza el **pipeline Steam
+> live** (producer + spark_streaming_kdd + api + dashboard). El speed
+> layer del **recomendador** y su producer sintético hay que lanzarlos
+> aparte (pasos 6 y 7), porque son una rama distinta del proyecto.
+
+### 5.4 Parada completa (orden inverso)
+
+Se para **de arriba a abajo**: primero las aplicaciones (para evitar
+errores de conexión cuando la infra cae), luego la infraestructura.
+
+```bash
+cd /home/hadoop/juegosKDD
+
+# ── 1. Producers Python (sintético, freetogame, steamspy, steam) ────
+pkill -TERM -f "synthetic_interactions_producer.py" 2>/dev/null
+pkill -TERM -f "freetogame_producer.py"             2>/dev/null
+pkill -TERM -f "steamspy_producer.py"               2>/dev/null
+pkill -TERM -f "steam_producer.py"                  2>/dev/null
+
+# ── 2. Speed Layer (driver Python + spark-submit Java en cascada) ───
+pkill -TERM -f "streaming_recommender.py" 2>/dev/null
+pkill -TERM -f "spark_streaming_kdd.py"   2>/dev/null
+sleep 4
+pkill -TERM -f "org.apache.spark.deploy.SparkSubmit" 2>/dev/null
+
+# ── 3. Dashboard Vite ───────────────────────────────────────────────
+pkill -TERM -f "node.*juegosKDD/7_dashboard.*vite" 2>/dev/null
+pkill -TERM -f "sh -c vite"                         2>/dev/null
+
+# ── 4. FastAPI (uvicorn :8000) ──────────────────────────────────────
+pkill -TERM -f "uvicorn.*main:app"                              2>/dev/null
+pkill -TERM -f "python.*5_serving_layer/api/main.py"            2>/dev/null
+
+# Forzar (KILL) lo que siga vivo tras 5 s
+sleep 5
+pkill -KILL -f "synthetic_interactions_producer.py|freetogame_producer.py|steamspy_producer.py|steam_producer.py" 2>/dev/null
+pkill -KILL -f "streaming_recommender.py|spark_streaming_kdd.py" 2>/dev/null
+pkill -KILL -f "uvicorn.*main:app|5_serving_layer/api/main.py"   2>/dev/null
+pkill -KILL -f "node.*juegosKDD/7_dashboard.*vite"               2>/dev/null
+
+# ── 5. Infraestructura (Airflow → Hive → Cassandra → Kafka → HDFS) ──
+bash 0_infra/stop_stack.sh
+
+# ── 6. Verificación ─────────────────────────────────────────────────
+jps                                              # no debe haber nada del proyecto
+for p in 5173 8000 8090 9000 9042 9083 9092 10000; do
+    ss -ltn | grep -q ":$p " && echo "  :$p ⚠ OCUPADO" || echo "  :$p libre"
+done
+```
+
+**Atajo rápido**:
+
+```bash
+bash 0_infra/start_pipeline.sh stop   # producer + streaming + api + dashboard
+bash 0_infra/stop_stack.sh            # infra
+```
+
+**Equivalencias por componente**:
+
+| Componente | Cómo arrancar | Cómo parar |
+|---|---|---|
+| HDFS / Kafka / Cassandra / Hive / Airflow | `bash 0_infra/start_stack.sh` | `bash 0_infra/stop_stack.sh` |
+| Solo Airflow del proyecto | (parte de `start_stack.sh`) | `bash 0_infra/stop_stack.sh airflow` |
+| FastAPI | `bash 0_infra/start_pipeline.sh api` | `pkill -f "uvicorn.*main:app"` |
+| Dashboard | `bash 0_infra/start_pipeline.sh dashboard` | `pkill -f "node.*juegosKDD/7_dashboard.*vite"` |
+| Speed Layer Steam (analítica) | `bash 0_infra/start_pipeline.sh streaming` | `pkill -f spark_streaming_kdd.py` |
+| Speed Layer recomendador | `bash 3_speed_layer/submit_streaming_recommender.sh &` | `pkill -f streaming_recommender.py` |
+| Producer Steam | `bash 0_infra/start_pipeline.sh producer` | `pkill -f steam_producer.py` |
+| Producer sintético (demo) | `python 1_ingesta/api_producer/synthetic_interactions_producer.py --rate 5 &` | `pkill -f synthetic_interactions_producer.py` |
+| KDD batch (one-shot) | `bash 4_batch_layer/recommender/submit_kdd.sh` | (termina solo) |
+| DAG Airflow | (Airflow Scheduler dispara cron) | (parar Airflow) |
+
+### 5.5 Procedimientos comunes
 
 ```bash
 # Limpiar tablas Cassandra (cuidado!)
