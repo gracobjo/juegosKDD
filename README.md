@@ -2,7 +2,23 @@
 
 Implementación completa de la metodología **KDD** (Knowledge Discovery in
 Databases) sobre una **Arquitectura Lambda** aplicada a analítica de videojuegos,
-con datos reales provenientes de la Steam Web API + SteamSpy.
+con datos reales provenientes de la Steam Web API + SteamSpy + Kaggle, y un
+**sistema híbrido de recomendación** (Filtrado Colaborativo ALS + Content-Based
+TF-IDF) servido en tiempo real.
+
+## Documentación completa
+
+La documentación funcional y técnica está en [`docs/`](docs/README.md):
+
+| # | Documento | Para quién |
+|---|---|---|
+| 1 | [Casos de uso](docs/01_casos_de_uso.md) | Análisis funcional |
+| 2 | [Requisitos](docs/02_requisitos.md) | Funcional + no funcional + entorno |
+| 3 | [Diseño](docs/03_diseno.md) | Arquitectura Lambda, KDD, modelo de datos, ADRs |
+| 4 | [Manual de usuario](docs/04_manual_usuario.md) | Dashboard + API + FAQ |
+| 5 | [Manual del desarrollador](docs/05_manual_desarrollador.md) | Setup, extensión, despliegue, troubleshooting |
+| 6 | [Glosario / acrónimos](docs/06_glosario_acronimos.md) | Diccionario A–Z |
+
 
 ## Prerequisitos (ya instalados en Linux Mint)
 - Apache Kafka     → `localhost:9092`
