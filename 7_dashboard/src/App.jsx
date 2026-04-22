@@ -149,9 +149,6 @@ export default function App() {
   );
   const [aiLoading, setAiLoading] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
-  const [recUserId, setRecUserId] = useState("151603717");
-  const [recAgent, setRecAgent] = useState(null);
-  const [recLoading, setRecLoading] = useState(false);
   const [monitorJson, setMonitorJson] = useState(null);
   const intervalRef = useRef(null);
 
@@ -270,17 +267,6 @@ export default function App() {
     setAiPrompt("");
   };
 
-  const loadRecommendations = useCallback(async () => {
-    setRecLoading(true);
-    try {
-      const data = await api.agentRecommend(recUserId.trim() || "151603717");
-      setRecAgent(data);
-    } catch (e) {
-      setRecAgent({ error: e.message });
-    }
-    setRecLoading(false);
-  }, [recUserId]);
-
   return (
     <>
       <style>{css}</style>
@@ -390,7 +376,6 @@ export default function App() {
             ["recommendations", "🎮 Recomendaciones"],
             ["agents", "🤖 Agentes IA"],
             ["insights", "🔬 KDD Insights"],
-            ["recommendations", "🎮 Recomendaciones"],
             ["system", "🤖 Sistema"],
             ["lambda", "λ Arquitectura"],
           ].map(([id, label]) => (
@@ -731,68 +716,6 @@ export default function App() {
                 </div>
               </div>
             ))}
-          </div>
-        )}
-
-        {tab === "recommendations" && (
-          <div className="section border-top">
-            <div className="section-title">Recomendador híbrido (ALS + TF-IDF)</div>
-            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-              <input
-                className="ai-input"
-                style={{ maxWidth: 260 }}
-                value={recUserId}
-                onChange={(e) => setRecUserId(e.target.value)}
-                placeholder="user_id (Kaggle Steam behaviors)"
-              />
-              <button
-                className="ai-btn"
-                disabled={recLoading}
-                type="button"
-                onClick={() => loadRecommendations()}
-              >
-                Cargar explicaciones
-              </button>
-            </div>
-            {recLoading && (
-              <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)" }}>
-                Consultando /api/agent/recommend …
-              </div>
-            )}
-            {recAgent?.error && (
-              <div style={{ color: "var(--red)", fontFamily: "var(--mono)", fontSize: 12 }}>
-                {recAgent.error}
-              </div>
-            )}
-            {recAgent && !recAgent.error && (
-              <div style={{ display: "grid", gap: 10 }}>
-                {(recAgent.recommendations || []).map((r, idx) => (
-                  <div
-                    key={idx}
-                    className="insight-item"
-                    style={{
-                      borderColor: "rgba(8,145,178,0.35)",
-                      background: "rgba(8,145,178,0.06)",
-                    }}
-                  >
-                    <div style={{ fontWeight: 700, marginBottom: 6 }}>{r.game}</div>
-                    <div
-                      style={{
-                        fontFamily: "var(--mono)",
-                        fontSize: 10,
-                        color: "var(--muted)",
-                        marginBottom: 6,
-                      }}
-                    >
-                      score {Number(r.hybrid_score || 0).toFixed(3)} · CF {Number(
-                        r.cf_component || 0
-                      ).toFixed(2)} · CB {Number(r.cb_component || 0).toFixed(2)}
-                    </div>
-                    <div style={{ fontSize: 12, lineHeight: 1.5 }}>{r.explanation}</div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         )}
 

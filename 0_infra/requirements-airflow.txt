@@ -1,0 +1,17 @@
+# ============================================================================
+# requirements-airflow.txt — Airflow dedicado al venv de juegosKDD
+# ----------------------------------------------------------------------------
+# Se instala SEPARADO de requirements.txt porque Airflow exige un constraints
+# file oficial (pin de ~200 dependencias). Instrucción:
+#
+#   VENV=/home/hadoop/juegosKDD/venv
+#   AF_VER=3.1.8
+#   PY=3.12
+#   "$VENV/bin/pip" install -r 0_infra/requirements-airflow.txt \
+#       --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-${AF_VER}/constraints-${PY}.txt"
+#
+# Esto deja apache-airflow, cadwyn, pydantic, cryptography, etc. con las
+# mismas versiones que los proveedores de Airflow han validado juntos.
+# ============================================================================
+
+apache-airflow==3.1.8

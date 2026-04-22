@@ -33,6 +33,31 @@ log "Instalando dependencias..."
 "$VENV/bin/pip" install -r "$ROOT/requirements.txt" || { err "Fallo instalando dependencias"; exit 1; }
 ok "Dependencias instaladas (FastAPI, pandas, scikit-learn, kaggle, kagglehub — ver requirements.txt)"
 
+# 2b) Airflow (aislado en ESTE venv, con constraints oficiales)
+# --------------------------------------------------------------
+# Airflow 3.x arrastra ~200 dependencias con versiones frágiles; por eso se
+# instala SEPARADO usando el fichero constraints oficial de la versión
+# elegida. Así se evita que `pip install -r requirements.txt` de otros
+# proyectos rompa este Airflow (problema real que tuvimos con pydantic).
+#
+# Variables:
+#   AIRFLOW_SKIP=1      → omite este paso (p. ej. si no se va a usar Airflow)
+#   AIRFLOW_VERSION     → por defecto 3.1.8 (coincide con requirements-airflow.txt)
+if [ "${AIRFLOW_SKIP:-0}" != "1" ]; then
+    AIRFLOW_VERSION="${AIRFLOW_VERSION:-3.1.8}"
+    PY_VER="$("$VENV/bin/python" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+    CONSTRAINTS_URL="https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PY_VER}.txt"
+    log "Instalando Airflow ${AIRFLOW_VERSION} (Python ${PY_VER}) con constraints oficiales..."
+    if "$VENV/bin/pip" install -r "$ROOT/0_infra/requirements-airflow.txt" \
+           --constraint "$CONSTRAINTS_URL"; then
+        ok "Airflow ${AIRFLOW_VERSION} instalado en $VENV"
+    else
+        warn "Fallo instalando Airflow. Puedes reintentar manualmente o usar AIRFLOW_SKIP=1."
+    fi
+else
+    warn "AIRFLOW_SKIP=1 → Airflow NO instalado en este venv"
+fi
+
 # 3) Preparar .env si no existe
 if [ ! -f "$ROOT/.env" ]; then
     if [ -f "$ROOT/.env.example" ]; then

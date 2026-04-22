@@ -2,25 +2,30 @@
 # requirements.txt — Dependencias consolidadas del proyecto KDD Gaming
 # ----------------------------------------------------------------------------
 # Se instalan en el venv creado por 0_infra/setup_venv.sh (~/juegosKDD/venv)
-# NOTA: pyspark lo provee la instalación local de Spark en /opt/spark, no se
-#       instala aquí para evitar versionar mal vs Spark 3.5.1.
+# NOTAS:
+#   · pyspark lo provee la instalación local de Spark en /opt/spark.
+#   · Airflow se instala aparte desde 0_infra/requirements-airflow.txt con
+#     constraints oficiales (ver setup_venv.sh). Los pines de pydantic,
+#     fastapi, requests, python-dateutil y python-dotenv de aquí están
+#     RELAJADOS a mínimos para NO chocar con los constraints de Airflow
+#     3.1.8 (problema real: pin de pydantic==2.9.2 rompía cadwyn 5.4.6).
 # ============================================================================
 
 # ── Ingesta (Steam → Kafka producer) ────────────────────────────────────────
 # kafka-python-ng es el fork mantenido (kafka-python 2.0.2 rompe en Python 3.12
 # por dependencia de six.moves que fue removido). API idéntica: `from kafka import ...`
 kafka-python-ng==2.2.3
-requests==2.32.3
-python-dotenv==1.0.1
+requests>=2.32
+python-dotenv>=1.0
 
 # ── Serving Layer (FastAPI + Cassandra) ─────────────────────────────────────
-fastapi==0.115.4
-uvicorn[standard]==0.32.0
+fastapi>=0.115
+uvicorn[standard]>=0.32
 cassandra-driver==3.29.2
-pydantic==2.9.2
+pydantic>=2.10,<3
 
 # ── Utilidades comunes ──────────────────────────────────────────────────────
-python-dateutil==2.9.0
+python-dateutil>=2.9
 pandas==2.2.3
 scikit-learn==1.5.2
 kaggle==1.6.17

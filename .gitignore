@@ -43,6 +43,12 @@ checkpoint/
 0_infra/airflow_home/
 0_infra/**/.secrets.env
 
+# ── Binarios upstream copiados al repo (NiFi 2.6.0 instalación completa) ─────
+# Se conserva fuera del control de versiones; el script start_stack.sh espera
+# encontrarlo en 0_infra/nifi-2.6.0/ pero es una copia local del tarball
+# oficial, no código del proyecto.
+0_infra/nifi-2.6.0/
+
 # ── IDE ───────────────────────────────────────────────────────────────────────
 .idea/
 .vscode/

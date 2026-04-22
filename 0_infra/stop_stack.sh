@@ -13,7 +13,7 @@ AIRFLOW_VENV_LEGACY="/home/hadoop/smart_energy/venv"
 AIRFLOW_HOME_DIR="${AIRFLOW_HOME:-/home/hadoop/juegosKDD/0_infra/airflow_home}"
 # Nuestro puerto de API — no tocar smart_grid (8080) ni transporte (8088)
 OUR_AIRFLOW_PORT="${AIRFLOW_API_PORT:-8090}"
-NIFI_HOME="${NIFI_HOME:-/home/hadoop/smart_energy/nifi-2.6.0}"
+NIFI_HOME="${NIFI_HOME:-/home/hadoop/juegosKDD/0_infra/nifi-2.6.0}"
 
 PID_DIR="/home/hadoop/juegosKDD/0_infra/pids"
 

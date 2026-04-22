@@ -260,6 +260,35 @@ def get_kdd_summary():
 
 
 # ── ENDPOINTS DEL RECOMENDADOR (gaming_recommender) ──────────────────────────
+# ORDEN IMPORTANTE: las rutas estáticas (/popular) deben declararse ANTES
+# que la ruta dinámica /{user_id}. FastAPI matchea en orden de registro, y
+# si /{user_id} va primero se come "popular" y lo trata como un user_id
+# (devolvería el wrapper de cold-start en vez de la lista pura).
+def _get_popular_fallback(session, limit: int):
+    rows = _safe_execute(
+        session,
+        "SELECT recommended_game, hybrid_score, total_hours, n_players "
+        "FROM popular_games_fallback LIMIT %s",
+        (limit,),
+    )
+    return [
+        {
+            "recommended_game": r.recommended_game,
+            "hybrid_score": float(r.hybrid_score or 0.0),
+            "total_hours": float(r.total_hours or 0.0),
+            "n_players": int(r.n_players or 0),
+            "source": "popular_fallback",
+        }
+        for r in rows
+    ]
+
+
+@app.get("/api/recommendations/popular")
+def api_get_popular(limit: int = Query(10, le=50)):
+    session = get_session_rec()
+    return _get_popular_fallback(session, limit)
+
+
 @app.get("/api/recommendations/{user_id}")
 def api_get_recommendations(user_id: str, limit: int = Query(10, le=50)):
     """Top-K recomendaciones hibridas para un usuario."""
@@ -286,31 +315,6 @@ def api_get_recommendations(user_id: str, limit: int = Query(10, le=50)):
     if not recs:
         return {"user_id": user_id, "cold_start": True, "recommendations": _get_popular_fallback(session, limit)}
     return {"user_id": user_id, "cold_start": False, "recommendations": recs}
-
-
-def _get_popular_fallback(session, limit: int):
-    rows = _safe_execute(
-        session,
-        "SELECT recommended_game, hybrid_score, total_hours, n_players "
-        "FROM popular_games_fallback LIMIT %s",
-        (limit,),
-    )
-    return [
-        {
-            "recommended_game": r.recommended_game,
-            "hybrid_score": float(r.hybrid_score or 0.0),
-            "total_hours": float(r.total_hours or 0.0),
-            "n_players": int(r.n_players or 0),
-            "source": "popular_fallback",
-        }
-        for r in rows
-    ]
-
-
-@app.get("/api/recommendations/popular")
-def api_get_popular(limit: int = Query(10, le=50)):
-    session = get_session_rec()
-    return _get_popular_fallback(session, limit)
 
 
 @app.get("/api/similar/{game_title}")

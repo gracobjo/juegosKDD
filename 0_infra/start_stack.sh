@@ -25,12 +25,20 @@ export KAFKA_HOME="${KAFKA_HOME:-/opt/kafka}"
 export HIVE_HOME="${HIVE_HOME:-/home/hadoop/apache-hive-4.2.0-bin}"
 export SPARK_HOME="${SPARK_HOME:-/opt/spark}"
 CASSANDRA_HOME="${CASSANDRA_HOME:-/home/hadoop/smart_energy/cassandra}"
-AIRFLOW_VENV="${AIRFLOW_VENV:-/home/hadoop/smart_energy/venv}"
+# Airflow corre AISLADO en el venv propio del proyecto (~/juegosKDD/venv).
+# Antes se reutilizaba ~/smart_energy/venv, pero eso acoplaba dependencias
+# entre proyectos (un pip upgrade en smart_energy rompía este Airflow).
+# Se instala con:  pip install -r 0_infra/requirements-airflow.txt --constraint …
+AIRFLOW_VENV="${AIRFLOW_VENV:-/home/hadoop/juegosKDD/venv}"
 # AIRFLOW_HOME DEDICADO a juegosKDD para NO pisar smart_grid (/home/hadoop/airflow)
 # ni proyecto_transporte (~/proyecto_transporte_global/airflow_home).
 AIRFLOW_HOME="${AIRFLOW_HOME:-/home/hadoop/juegosKDD/0_infra/airflow_home}"
 AIRFLOW_API_PORT="${AIRFLOW_API_PORT:-8090}"   # smart_grid:8080 · transporte:8088
-NIFI_HOME="${NIFI_HOME:-/home/hadoop/smart_energy/nifi-2.6.0}"
+# NiFi propio de juegosKDD (copia limpia sin flow/repos/keystores del
+# NiFi compartido de smart_energy). Así el canvas arranca vacío y no vemos
+# procesadores de otros proyectos. El :8443 sigue siendo el mismo: no
+# puede coexistir al mismo tiempo con el NiFi de smart_energy.
+NIFI_HOME="${NIFI_HOME:-/home/hadoop/juegosKDD/0_infra/nifi-2.6.0}"
 
 LOG_DIR="/home/hadoop/juegosKDD/0_infra/logs"
 PID_DIR="/home/hadoop/juegosKDD/0_infra/pids"
@@ -299,12 +307,24 @@ EOF
     fi
 }
 
-# ── NiFi (opcional) ──────────────────────────────────────────────────────────
+# ── NiFi ─────────────────────────────────────────────────────────────────────
+# NOTA de aislamiento: a diferencia del venv de Airflow (que SÍ hemos
+# independizado en ~/juegosKDD/venv), NiFi sigue ejecutándose desde
+# $NIFI_HOME (por defecto ~/smart_energy/nifi-2.6.0) porque toda su
+# configuración (flow.json.gz, keystore/truststore, usuarios) está allí.
+# Mover esto implicaría una migración mayor. Si varios proyectos usan la
+# misma instalación de NiFi, comparten el :8443.
 start_nifi() {
-    log "NiFi 2.x"
-    if port_open 8443 || port_open 8081; then ok "NiFi ya arrancado"; return 0; fi
+    log "NiFi 2.x (HTTPS en :8443)"
+    if port_open 8443; then ok "NiFi ya arrancado"; return 0; fi
+    if [ ! -x "$NIFI_HOME/bin/nifi.sh" ]; then
+        err "NiFi no encontrado en $NIFI_HOME — instala o ajusta NIFI_HOME"
+        return 1
+    fi
     "$NIFI_HOME/bin/nifi.sh" start >"$LOG_DIR/nifi.log" 2>&1
-    warn "NiFi tarda ~60s en estar listo (HTTPS en :8443). Revisa con: nifi.sh status"
+    # NiFi 2.x tarda 60–120s en levantar Jetty + cargar el flow
+    wait_for_port NiFi 8443 150 || \
+        warn "Si no respondió, revisa $NIFI_HOME/logs/nifi-app.log"
 }
 
 # ── Estado ───────────────────────────────────────────────────────────────────
@@ -318,6 +338,7 @@ show_status() {
         "Hive Metastore:9083" \
         "HiveServer2:10000" \
         "Airflow API (juegosKDD):$AIRFLOW_API_PORT" \
+        "NiFi (HTTPS):8443" \
         "FastAPI:8000" \
         "Dashboard Vite:5173" \
         ; do
@@ -365,6 +386,7 @@ case "${1:-all}" in
         start_cassandra
         start_hive
         start_airflow
+        start_nifi
         show_status
         ;;
     *)

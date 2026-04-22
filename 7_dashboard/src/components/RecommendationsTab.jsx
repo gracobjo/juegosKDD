@@ -18,10 +18,16 @@ export default function RecommendationsTab() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
 
+  // Normaliza respuestas que pueden venir como array plano o envueltas en
+  // { recommendations: [...] } (p.ej. si /recommendations/popular se come la
+  // ruta dinámica /{user_id}). Así el componente es robusto a ambos casos.
+  const toArray = (r) =>
+    Array.isArray(r) ? r : Array.isArray(r?.recommendations) ? r.recommendations : [];
+
   const fetchPopular = useCallback(async () => {
     try {
       const p = await api.getPopular(15);
-      setPopular(p || []);
+      setPopular(toArray(p));
     } catch (e) {
       setErr(e.message);
     }
@@ -30,7 +36,7 @@ export default function RecommendationsTab() {
   const fetchMetrics = useCallback(async () => {
     try {
       const m = await api.getModelMetrics(10);
-      setMetrics(m || []);
+      setMetrics(Array.isArray(m) ? m : []);
     } catch (e) {
       /* silencio: aun no hay metricas */
     }
