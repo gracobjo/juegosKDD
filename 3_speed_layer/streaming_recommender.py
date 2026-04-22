@@ -63,7 +63,7 @@ KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "localhost:9092")
 CASSANDRA_HOST = os.getenv("CASSANDRA_HOST", "localhost")
 TOPIC = os.getenv("TOPIC_USER_INTERACTIONS", "gaming.user.interactions")
 CHECKPOINT = os.getenv(
-    "STREAMING_CHECKPOINT", "/tmp/kdd_recommender_checkpoint/interactions"
+    "STREAMING_CHECKPOINT", "file:///tmp/kdd_recommender_checkpoint/interactions"
 )
 
 

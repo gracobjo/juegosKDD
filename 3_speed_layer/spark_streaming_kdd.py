@@ -80,7 +80,11 @@ spark = (
     )
     .config("spark.cassandra.connection.host", "localhost")
     .config("spark.cassandra.connection.port", "9042")
-    .config("spark.sql.streaming.checkpointLocation", "/tmp/kdd_checkpoint")
+    # Checkpoint en filesystem LOCAL (no HDFS): si la ruta no lleva esquema
+    # explícito, Spark la resuelve contra fs.defaultFS=hdfs://nodo1:9000 y
+    # acabamos escribiendo cientos de .delta diminutos en HDFS, que con
+    # replication=1 se corrompen al primer reinicio sucio.
+    .config("spark.sql.streaming.checkpointLocation", "file:///tmp/kdd_checkpoint")
     .getOrCreate()
 )
 spark.sparkContext.setLogLevel("WARN")
@@ -250,7 +254,7 @@ query = (
     .foreachBatch(write_batch)
     .trigger(processingTime="30 seconds")
     .outputMode("update")
-    .option("checkpointLocation", "/tmp/kdd_checkpoint/speed")
+    .option("checkpointLocation", "file:///tmp/kdd_checkpoint/speed")
     .start()
 )
 

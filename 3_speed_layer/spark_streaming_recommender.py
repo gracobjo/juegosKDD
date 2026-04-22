@@ -181,7 +181,7 @@ query = (
     events.writeStream.foreachBatch(process_batch)
     .trigger(processingTime="30 seconds")
     .outputMode("update")
-    .option("checkpointLocation", "/tmp/kdd_checkpoint/recommender_interactions")
+    .option("checkpointLocation", "file:///tmp/kdd_checkpoint/recommender_interactions")
     .start()
 )
 
