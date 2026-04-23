@@ -210,6 +210,15 @@ start_airflow() {
     # Fuerza el puerto también vía env por si algún subproceso no recibe --port
     export AIRFLOW__API__PORT=$AIRFLOW_API_PORT
     export AIRFLOW__API__HOST=0.0.0.0
+    # Airflow 3.x: el Task SDK del worker habla con la "Execution API" expuesta
+    # por el api-server. Si no se indica URL, cae por defecto a
+    # http://localhost:8080/ y, como nuestro api-server corre en 8090, el worker
+    # revienta con `httpx.ConnectError: [Errno 111] Connection refused` ANTES
+    # de imprimir nada en el log del task (logs vacíos de 0 bytes, task en
+    # state=queued + executor_state=failed). Con estas variables alineamos
+    # scheduler/workers/api-server al mismo puerto.
+    export AIRFLOW__CORE__EXECUTION_API_SERVER_URL="http://localhost:${AIRFLOW_API_PORT}/execution/"
+    export AIRFLOW__API__BASE_URL="http://localhost:${AIRFLOW_API_PORT}"
 
     mkdir -p "$AIRFLOW_HOME"
 

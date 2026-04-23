@@ -379,6 +379,38 @@ def api_realtime_rec(limit: int = Query(20, le=100)):
     ]
 
 
+@app.get("/api/recommender/users")
+def api_recommender_users(limit: int = Query(50, ge=1, le=500)):
+    """
+    Lista `user_id` conocidos por el recomendador.
+
+    Fuente: tabla `gaming_recommender.player_windows` (Speed Layer del recomendador).
+    No hay una tabla "users" como tal; aquí devolvemos IDs observados recientemente.
+    """
+    session = get_session_rec()
+    rows = _safe_execute(
+        session, "SELECT user_id, window_start FROM player_windows LIMIT %s", (limit * 5,)
+    )
+
+    # Dedupe + orden aproximado por ventana más reciente (si existe)
+    latest_by_user = {}
+    for r in rows:
+        uid = getattr(r, "user_id", None)
+        if not uid:
+            continue
+        ws = getattr(r, "window_start", None)
+        prev = latest_by_user.get(uid)
+        if prev is None or (ws and prev and ws > prev) or (ws and not prev):
+            latest_by_user[uid] = ws
+
+    users = [
+        {"user_id": uid, "last_seen": (ws.isoformat() if ws else None)}
+        for uid, ws in latest_by_user.items()
+    ]
+    users.sort(key=lambda x: x["last_seen"] or "", reverse=True)
+    return users[:limit]
+
+
 # ── AGENTES IA ────────────────────────────────────────────────────────────────
 @app.get("/api/agent/explorer")
 def api_agent_explorer():

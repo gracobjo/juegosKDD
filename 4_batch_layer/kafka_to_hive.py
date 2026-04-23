@@ -98,6 +98,12 @@ def main() -> int:
             "spark.jars.packages",
             "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1",
         )
+        # Permitir particiones dinámicas puras (sin columna estática). Con
+        # `.format("hive")` + `.partitionBy("dt")` y sin esto, Hive rechaza el
+        # INSERT con "Dynamic partition strict mode requires at least one
+        # static partition column".
+        .config("spark.hadoop.hive.exec.dynamic.partition", "true")
+        .config("spark.hadoop.hive.exec.dynamic.partition.mode", "nonstrict")
         .enableHiveSupport()
         .getOrCreate()
     )
@@ -135,16 +141,21 @@ def main() -> int:
         spark.stop()
         return 0
 
-    # Escritura Parquet particionada por dt. Usamos saveAsTable para que Hive
-    # Metastore registre la partición automáticamente. append para no pisar
-    # datos previos.
+    # Escritura particionada por dt usando `.format("hive")`. La tabla
+    # gaming_kdd.player_snapshots existe en el Metastore 4.x con
+    # SerDe=HiveFileFormat (creada por un CREATE TABLE nativo de Hive), así
+    # que si pedimos .format("parquet") Spark revienta con:
+    #   "The format of the existing table ... is `HiveFileFormat`.
+    #    It doesn't match the specified format `ParquetDataSourceV2`."
+    # `.format("hive")` delega en el HiveFileFormat subyacente (que
+    # internamente sigue siendo Parquet por el STORED AS PARQUET de la DDL)
+    # y respeta la definición existente. append para no pisar datos previos.
     (
         normalized.select(*HIVE_COLUMNS, "dt")
         .write
         .mode("append")
-        .format("parquet")
+        .format("hive")
         .partitionBy("dt")
-        .option("path", target_dir)
         .saveAsTable("gaming_kdd.player_snapshots")
     )
 

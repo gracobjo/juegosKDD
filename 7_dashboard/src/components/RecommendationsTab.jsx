@@ -10,6 +10,7 @@ const tierColor = (score) => {
 
 export default function RecommendationsTab() {
   const [userId, setUserId] = useState("");
+  const [users, setUsers] = useState([]);
   const [gameQuery, setGameQuery] = useState("");
   const [recs, setRecs] = useState(null);
   const [popular, setPopular] = useState([]);
@@ -42,10 +43,21 @@ export default function RecommendationsTab() {
     }
   }, []);
 
+  const fetchUsers = useCallback(async () => {
+    try {
+      const u = await api.getRecommenderUsers(50);
+      setUsers(Array.isArray(u) ? u : []);
+    } catch (e) {
+      /* silencio: si no hay usuarios todavía */
+      setUsers([]);
+    }
+  }, []);
+
   useEffect(() => {
     fetchPopular();
     fetchMetrics();
-  }, [fetchPopular, fetchMetrics]);
+    fetchUsers();
+  }, [fetchPopular, fetchMetrics, fetchUsers]);
 
   const search = async () => {
     if (!userId.trim()) return;
@@ -103,7 +115,7 @@ export default function RecommendationsTab() {
       {/* Busqueda por usuario */}
       <div className="section">
         <div className="section-title">Recomendaciones por Usuario</div>
-        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
           <input
             className="ai-input"
             placeholder="user_id (ej: 151603712)"
@@ -113,6 +125,25 @@ export default function RecommendationsTab() {
           />
           <button className="ai-btn" onClick={search} disabled={loading}>
             {loading ? "BUSCANDO..." : "RECOMENDAR"}
+          </button>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          <select
+            className="ai-input"
+            value={userId}
+            onChange={(e) => setUserId(e.target.value)}
+            style={{ cursor: "pointer" }}
+          >
+            <option value="">— Selecciona un jugador detectado —</option>
+            {users.map((u) => (
+              <option key={u.user_id} value={u.user_id}>
+                {u.user_id}{u.last_seen ? ` · last_seen ${u.last_seen.slice(0, 19)}` : ""}
+              </option>
+            ))}
+          </select>
+          <button className="ctrl-btn" type="button" onClick={() => fetchUsers()} disabled={loading}>
+            ↻ USERS
           </button>
         </div>
 

@@ -160,7 +160,19 @@ daily = (
     .withColumn("player_rank", rank().over(w))
     .withColumn("dt", lit(PROCESS_DATE))
 )
-daily.cache()
+
+# IMPORTANTE: si `prev` se leyó arriba de gaming_kdd.kdd_daily_summary,
+# `daily` arrastra esa tabla en su lineage. Cuando más abajo hacemos
+# `daily.write.saveAsTable("gaming_kdd.kdd_daily_summary")`, Spark detecta
+# escritura sobre tabla que también se está leyendo y revienta con
+#   [UNSUPPORTED_OVERWRITE.TABLE] Can't overwrite the target that is also
+#   being read from.
+# `.cache()` no rompe el lineage (la comprobación es estática). Forzamos
+# un localCheckpoint eager: persiste los datos en disco local del executor
+# y devuelve un DataFrame "nuevo" cuyo lineage NO referencia ya a la tabla
+# Hive original.
+daily = daily.localCheckpoint(eager=True)
+
 print(f"  → {daily.count()} juegos procesados")
 
 # ── 5. EVALUATION — Insights batch ───────────────────────────────────────────
@@ -246,12 +258,22 @@ if insights:
         .save()
 
 # ── Guardar resumen en Hive ──────────────────────────────────────────────────
+# Notas:
+#  - .format("hive"): la tabla `kdd_daily_summary` está creada como
+#    HiveFileFormat en el Metastore 4.x; con .format("parquet") Spark
+#    revienta con "format ... doesn't match the specified format".
+#  - dynamic partition overwrite: sobreescribimos SOLO la partición del
+#    día (dt=PROCESS_DATE), no toda la tabla histórica. Sin esto, un
+#    re-run del job borraría los días anteriores.
 print("  → Guardando resumen diario en Hive kdd_daily_summary")
+spark.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
+spark.conf.set("hive.exec.dynamic.partition", "true")
+spark.conf.set("hive.exec.dynamic.partition.mode", "nonstrict")
 (
     daily.write
     .mode("overwrite")
     .partitionBy("dt")
-    .format("parquet")
+    .format("hive")
     .saveAsTable("gaming_kdd.kdd_daily_summary")
 )
 

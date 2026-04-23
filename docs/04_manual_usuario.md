@@ -79,12 +79,36 @@ proviene cada dato.
 | 🔬 **KDD Insights** | `kdd_insights` (ambos keyspaces) | Lista filtrable de alertas (`info / warning / alert / critical`) generadas por el speed o el batch. |
 | λ **Arquitectura** | (estática) | Mini-diagrama explicativo de la arquitectura Lambda + métricas globales (#tablas, #endpoints…). |
 
+> Nota: la versión actual del dashboard muestra **7 pestañas**:
+> Tiempo Real, Histórico, Recomendaciones, Agentes IA, KDD Insights, Sistema y Arquitectura.
+
+### 2.3 ¿De dónde salen los datos? (real vs Kaggle vs sintético)
+
+El dashboard **no lee CSVs directamente**. Todo lo que se pinta viene de
+**FastAPI → Cassandra** (Serving Layer). La diferencia está en *cómo se
+pobla Cassandra*:
+
+- **Steam / SteamSpy (APIs, “real-time”)**: cuando está corriendo el producer/ingesta,
+  se publican eventos en Kafka y el Speed Layer escribe agregados a Cassandra.
+  Es la fuente típica de la pestaña **Tiempo Real**.
+- **Kaggle (offline)**: se usa para poblar el recomendador (y/o históricos) cuando
+  quieres un dataset estable. Se carga a Hive/Cassandra mediante el loader y el pipeline batch.
+- **Sintético (demo)**: si no hay credenciales o quieres una demo rápida,
+  un producer genera eventos falsos (pero con el mismo esquema) para alimentar Kafka.
+
+En resumen:
+- **Tiempo Real / Insights (gaming_kdd)** suelen venir de **APIs Steam/SteamSpy** (si la ingesta está activa).
+- **Recomendaciones (gaming_recommender)** suelen venir de **Kaggle** (batch) + **interacciones** (speed) + fallback popular.
+  El origen exacto se ve en el campo `source` (`batch`, `speed_layer`, `popular_fallback`).
+
 ---
 
 ## 3. Cómo usar la pestaña Recomendaciones
 
 1. **Buscar por usuario**
    - Introduce un `user_id` en la caja de texto.
+   - Alternativamente, usa el desplegable “**Selecciona un jugador detectado**”, que lista
+     usuarios observados por el recomendador (Speed Layer) desde Cassandra.
    - Pulsa "Buscar".
    - Si el usuario existe en el modelo, verás una lista de hasta 10 juegos con:
      - `rank` (1 = mejor)
@@ -148,6 +172,9 @@ curl http://localhost:8000/api/kdd/summary | jq .
 
 # Real-time del recomendador
 curl http://localhost:8000/api/recommender/realtime?limit=10 | jq .
+
+# Listado de usuarios detectados por el recomendador (para elegir user_id)
+curl http://localhost:8000/api/recommender/users?limit=50 | jq .
 ```
 
 ### 5.2 Endpoints de agentes
@@ -239,7 +266,7 @@ R. Ejecuta:
 ```bash
 cqlsh -e "SELECT user_id FROM gaming_recommender.user_recommendations LIMIT 10;"
 ```
-o usa los IDs que aparecen en la propia pestaña Histórico → Top usuarios (si está habilitada).
+o usa el desplegable en la pestaña **Recomendaciones** (lista desde `/api/recommender/users`).
 
 **P. La API responde 503.**
 R. Cassandra no está arrancada o el keyspace correspondiente no existe. Comprueba `nodetool status` y vuelve a ejecutar `cqlsh -f 5_serving_layer/recommender_schema.cql`.

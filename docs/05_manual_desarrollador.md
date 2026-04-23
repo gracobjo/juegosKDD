@@ -223,6 +223,29 @@ python 1_ingesta/producer/steam_producer.py
 - Llamadas REST centralizadas en `src/api.js` — no hacer `fetch` directo en los componentes.
 - CSS embebido en `App.jsx` (estilo cyberpunk/terminal); para nuevas pestañas, reutilizar las clases existentes (`.section`, `.feed-item`, `.bar-chart`, `.ai-panel`).
 
+### 3.6 Dashboard (pestañas) y contrato de datos
+
+Las pestañas están definidas en `7_dashboard/src/App.jsx` y consumen FastAPI vía `7_dashboard/src/api.js`.
+Este es el “contrato” recomendado (útil para debugging):
+
+| Pestaña | Front | Endpoint(s) | Keyspace / tabla |
+|---|---|---|---|
+| Tiempo Real | `App.jsx` | `GET /api/realtime` | `gaming_kdd.player_windows` |
+| Histórico | `App.jsx` | `GET /api/historical` | `gaming_kdd.game_stats_daily` |
+| KDD Insights | `App.jsx` | `GET /api/insights?source=both` | `gaming_kdd.kdd_insights` + `gaming_recommender.kdd_insights` |
+| Recomendaciones | `RecommendationsTab.jsx` | `GET /api/recommendations/{user_id}` | `gaming_recommender.user_recommendations` |
+|  |  | `GET /api/recommendations/popular` | `gaming_recommender.popular_games_fallback` |
+|  |  | `GET /api/similar/{game_title}` | `gaming_recommender.game_similarity` |
+|  |  | `GET /api/recommender/metrics` | `gaming_recommender.model_metrics` |
+|  |  | `GET /api/recommender/users` | `gaming_recommender.player_windows` (IDs observados) |
+| Agentes IA | `AgentsTab.jsx` | `GET /api/agent/*` | mixto (Cassandra + checks) |
+| Sistema | `App.jsx` | `GET /api/agent/monitor` | `gaming_recommender.*` |
+| Arquitectura | `App.jsx` | `GET /api/kdd/summary` (y estático) | `gaming_kdd.*` |
+
+Notas:
+- El dashboard **no** lee Kaggle directamente. Kaggle se usa para poblar Hive/Cassandra (batch) y luego la UI consume Cassandra vía FastAPI.
+- El selector de usuarios en Recomendaciones usa `GET /api/recommender/users`, que lista `user_id` vistos en el Speed Layer del recomendador.
+
 ### 3.4 Cassandra schema
 
 - Toda tabla nueva debe declarar:

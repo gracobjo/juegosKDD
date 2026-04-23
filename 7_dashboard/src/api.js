@@ -35,6 +35,7 @@ export const api = {
   getSimilar:         (game, limit = 10)         => apiFetch(`/api/similar/${encodeURIComponent(game)}`, { limit }),
   getModelMetrics:    (limit = 20)               => apiFetch("/api/recommender/metrics", { limit }),
   getRecommenderRealtime: (limit = 20)           => apiFetch("/api/recommender/realtime", { limit }),
+  getRecommenderUsers: (limit = 50)              => apiFetch("/api/recommender/users", { limit }),
 
   // Agentes IA
   agentExplorer:   ()                            => apiFetch("/api/agent/explorer"),
