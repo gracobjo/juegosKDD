@@ -34,11 +34,23 @@ KAFKA_TOPIC = "/opt/kafka/bin/kafka-topics.sh"
 CQLSH       = "cqlsh"  # disponible en PATH (Entorno Smart Grid)
 
 # Prefijo común que garantiza PATH y activación del venv en cada BashOperator.
+# IVY2_HOME: mismo motivo que en submit_kafka_to_hive.sh — `metastore.jars=maven`
+# en spark-submit del batch KDD debe escribir Ivy en un sitio fijo y con
+# permisos predecibles (Airflow a veces ejecuta como root).
 ENV_PREFIX = (
+    f"export IVY2_HOME={PROJECT_DIR}/0_infra/.ivy2 && mkdir -p \"$IVY2_HOME\" && "
     f"export PATH={VENV}/bin:/opt/spark/bin:/opt/kafka/bin:"
     f"/home/hadoop/apache-hive-4.2.0-bin/bin:$PATH && "
     f"source {VENV}/bin/activate && "
 )
+
+# Fecha de proceso: en Airflow 3.x los manual runs sin --logical-date NO tienen
+# `logical_date`, `data_interval_start` ni `data_interval_end` (todos dan
+# UndefinedError al renderizar `{{ ds }}`). En cambio `dag_run.run_after` SÍ
+# está siempre definido (es el timestamp de encolado en un manual, y el fin
+# del intervalo en un scheduled run). Lo normalizamos a YYYY-MM-DD para
+# usarlo como partición.
+DS = "{{ dag_run.run_after.strftime('%Y-%m-%d') }}"
 
 default_args = {
     "owner":             "kdd_gaming",
@@ -105,17 +117,36 @@ with DAG(
         bash_command=(
             f"{ENV_PREFIX}"
             f"bash {PROJECT_DIR}/4_batch_layer/submit_kafka_to_hive.sh "
-            "{{ ds }}"
+            f"{DS}"
         ),
     )
 
-    # ── 4. Reparar particiones en Hive (via spark-sql: más rápido que HS2) ──
+    # Cliente Hive forzado a 3.1.3 para hablar con el Metastore 4.2.0. El
+    # cliente embebido 2.3 que trae Spark 3.5.1 revienta con "Invalid method
+    # name: 'get_table'" (Hive 4 renombró a get_table_req). Spark 3.5.1 solo
+    # admite metastore.version ∈ [0.12–2.3.9] ∪ [3.0.0–3.1.3], así que
+    # usamos 3.1.3 (compat legacy con el Metastore 4). Los jars se bajan de
+    # Maven la primera vez y quedan cacheados.
+    HIVE_METASTORE_CONF = (
+        "--conf spark.sql.hive.metastore.version=3.1.3 "
+        "--conf spark.sql.hive.metastore.jars=maven "
+    )
+
+    # ── 4. Reparar particiones en Hive (beeline → HS2 nativo) ──────────────
+    # Antes esto era `spark-sql ... -e "MSCK REPAIR TABLE ..."` pero arrancar
+    # un SparkSession solo para una sentencia DDL trivial es absurdo: con la
+    # config `spark.sql.hive.metastore.jars=maven` Spark se descarga ~200MB
+    # de jars en cada invocación y, peor, deja el job colgado contra el
+    # Metastore 4.x bloqueando recursos. `beeline` se conecta directamente a
+    # HiveServer2 (Hive 4.2.0 nativo, sin mismatch de versiones), ejecuta
+    # el MSCK en milisegundos y se desconecta.
     hive_repair = BashOperator(
         task_id="hive_repair_partitions",
         bash_command=(
             f"{ENV_PREFIX}"
-            f"{SPARK_SQL} -e \""
-            "MSCK REPAIR TABLE gaming_kdd.player_snapshots;\""
+            "beeline -u 'jdbc:hive2://localhost:10000/gaming_kdd' "
+            "--silent=true --showHeader=false --outputformat=tsv2 "
+            "-e 'MSCK REPAIR TABLE gaming_kdd.player_snapshots;'"
         ),
     )
 
@@ -129,23 +160,26 @@ with DAG(
             "--driver-memory 2g --executor-memory 2g "
             "--packages com.datastax.spark:spark-cassandra-connector_2.12:3.5.1 "
             "--conf spark.cassandra.connection.host=localhost "
+            f"{HIVE_METASTORE_CONF}"
             f"{PROJECT_DIR}/4_batch_layer/spark_batch_kdd.py "
-            "--date={{ ds }}"
+            f"--date={DS}"
         ),
     )
 
     # ── 6. Validar resultados en Cassandra ───────────────────────────────────
     validate_results = BashOperator(
         task_id="validate_cassandra_results",
-        bash_command=r"""
-COUNT=$(cqlsh -e "SELECT COUNT(*) FROM gaming_kdd.game_stats_daily WHERE dt='{{ ds }}' ALLOW FILTERING;" \
+        bash_command=(
+            "DT=" + DS + r""" ;
+COUNT=$(cqlsh -e "SELECT COUNT(*) FROM gaming_kdd.game_stats_daily WHERE dt='$DT' ALLOW FILTERING;" \
         | grep -oP '\d+' | tail -1)
-echo "Registros en Cassandra para {{ ds }}: $COUNT"
+echo "Registros en Cassandra para $DT: $COUNT"
 if [ -z "$COUNT" ] || [ "$COUNT" -lt "1" ]; then
     echo "ERROR: No se encontraron registros en Cassandra"
     exit 1
 fi
-""",
+"""
+        ),
     )
 
     # ── 7. Generar reporte del día ───────────────────────────────────────────
@@ -154,7 +188,7 @@ fi
         bash_command=(
             f"{ENV_PREFIX}"
             f"cd {PROJECT_DIR}/6_orchestration/dags && "
-            f"DT={{{{ ds }}}} {PYTHON} _daily_report.py"
+            f"DT={DS} {PYTHON} _daily_report.py"
         ),
     )
 
